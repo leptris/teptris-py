@@ -1,0 +1,113 @@
+name: Release wheels
+
+# Platform wheels vendoring libteptris, following yeptris-py's
+# release-wheels pattern: fires on lockstep tags (v{libteptris-semver}
+# .{binding-patch}); builds the C core at the matching C tag, vendors
+# the shared library into teptris/_platform/<v>/, repairs (manylinux)
+# or re-tags (macOS), SMOKES the installed wheel in a clean venv, and
+# attaches artifacts to the release. PyPI upload rides twine from a
+# maintainer machine until trusted publishing is configured (same
+# credentials story as yeptris-py).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  wheel:
+    name: Wheel on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Resolve the lockstep coordinates
+        run: |
+          set -eu
+          VERSION=$(python3 -c "import tomllib,sys;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])" 2>/dev/null \
+            || sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
+          # {libteptris-semver}.{binding-patch}: the C tag is the first three
+          C_VERSION=$(echo "$VERSION" | cut -d. -f1-3)
+          echo "C_TAG=v${C_VERSION}" >> "$GITHUB_ENV"
+          echo "PY_VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+      - name: Checkout libteptris (the C core, at the tag)
+        uses: actions/checkout@v4
+        with:
+          repository: leptris/teptris
+          path: libteptris-src
+          ref: ${{ env.C_TAG }}
+
+      - name: Install build tooling
+        run: |
+          python3 -m pip install -q setuptools wheel build auditwheel
+          if [ "$(uname -s)" = "Linux" ]; then sudo apt-get update -qq && sudo apt-get install -y -qq cmake ninja-build >/dev/null; else brew install cmake ninja; fi
+
+      - name: Build the C shared library
+        run: |
+          cmake -B libteptris-src/build -S libteptris-src -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON
+          cmake --build libteptris-src/build
+
+      - name: Vendor the library into _platform
+        run: |
+          set -eu
+          mkdir -p "src/teptris/_platform/${PY_VERSION}"
+          if [ "$(uname -s)" = "Darwin" ]; then
+            EXT=dylib
+          else
+            EXT=so
+          fi
+          cp "libteptris-src/build/src/libteptris.${EXT}" \
+             "src/teptris/_platform/${PY_VERSION}/libteptris.${EXT}"
+          if [ "$(uname -s)" = "Darwin" ]; then
+            install_name_tool -id "@rpath/libteptris.${EXT}" \
+              "src/teptris/_platform/${PY_VERSION}/libteptris.${EXT}"
+          fi
+
+      - name: Build the wheel
+        run: python3 -m build --wheel
+
+      - name: Repair (manylinux) / verify (macOS)
+        run: |
+          if [ "$(uname -s)" = "Linux" ]; then
+            auditwheel repair dist/*.whl -w dist/repaired
+            rm -f dist/*.whl && mv dist/repaired/*.whl dist/
+          fi
+          ls -la dist/
+
+      - name: Smoke test the installed wheel
+        run: |
+          python3 -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install -q dist/*.whl
+          /tmp/smoke/bin/python - <<'EOF'
+          import teptris
+          assert teptris.loads("a = 1\ns = 'x'") == {"a": 1, "s": "x"}
+          print("smoke ok", teptris.library_path)
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist/*.whl
+
+      - name: Attach wheels to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.whl
