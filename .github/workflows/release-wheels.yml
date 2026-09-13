@@ -1,13 +1,8 @@
 name: Release wheels
 
-# Platform wheels vendoring libteptris, following yeptris-py's
-# release-wheels pattern: fires on lockstep tags (v{libteptris-semver}
-# .{binding-patch}); builds the C core at the matching C tag, vendors
-# the shared library into teptris/_platform/<v>/, repairs (manylinux)
-# or re-tags (macOS), SMOKES the installed wheel in a clean venv, and
-# attaches artifacts to the release. PyPI upload rides twine from a
-# maintainer machine until trusted publishing is configured (same
-# credentials story as yeptris-py).
+# Native-extension wheels (no fallback): every wheel builds teptris._native
+# against the C core at the lockstep tag and bundles the shared library
+# chain beside it (@loader_path rpath on ELF/Mach-O).
 
 on:
   push:
@@ -30,7 +25,6 @@ jobs:
           - os: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -38,9 +32,7 @@ jobs:
       - name: Resolve the lockstep coordinates
         run: |
           set -eu
-          VERSION=$(python3 -c "import tomllib,sys;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])" 2>/dev/null \
-            || sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
-          # {libteptris-semver}.{binding-patch}: the C tag is the first three
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
           C_VERSION=$(echo "$VERSION" | cut -d. -f1-3)
           echo "C_TAG=v${C_VERSION}" >> "$GITHUB_ENV"
           echo "PY_VERSION=${VERSION}" >> "$GITHUB_ENV"
@@ -64,24 +56,23 @@ jobs:
             -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON
           cmake --build libteptris-src/build
 
-      - name: Vendor the library into _platform
+      - name: Build the extension in place
+        env:
+          TEPTRIS_INCLUDE: ${{ github.workspace }}/libteptris-src/src/include
+          TEPTRIS_LIBDIR: ${{ github.workspace }}/libteptris-src/build/src
         run: |
-          set -eu
-          mkdir -p "src/teptris/_platform/${PY_VERSION}"
+          python3 setup.py build_ext --inplace
           if [ "$(uname -s)" = "Darwin" ]; then
-            EXT=dylib
+            cp libteptris-src/build/src/libteptris.0.dylib src/teptris/ 2>/dev/null || true
           else
-            EXT=so
-          fi
-          cp "libteptris-src/build/src/libteptris.${EXT}" \
-             "src/teptris/_platform/${PY_VERSION}/libteptris.${EXT}"
-          if [ "$(uname -s)" = "Darwin" ]; then
-            install_name_tool -id "@rpath/libteptris.${EXT}" \
-              "src/teptris/_platform/${PY_VERSION}/libteptris.${EXT}"
+            cp libteptris-src/build/src/libteptris.so.0* src/teptris/ 2>/dev/null || true
           fi
 
-      - name: Build the wheel
-        run: python3 -m build --wheel
+      - name: Build the wheel (no isolation; ext already built)
+        env:
+          TEPTRIS_INCLUDE: ${{ github.workspace }}/libteptris-src/src/include
+          TEPTRIS_LIBDIR: ${{ github.workspace }}/libteptris-src/build/src
+        run: python3 -m build --wheel --no-isolation
 
       - name: Finalize (macOS platform tag / manylinux repair)
         run: |
@@ -99,7 +90,7 @@ jobs:
           python3 -m venv /tmp/smoke
           /tmp/smoke/bin/pip install -q dist/final/*.whl
           cd /tmp && env -u TEPTRIS_LIB_PATH /tmp/smoke/bin/python -c \
-            "import teptris; assert teptris.loads('a = 1') == {'a': 1}; print('smoke ok', teptris.library_path)"
+            "import teptris; assert teptris.loads('a = 1') == {'a': 1}; print('smoke ok')"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -111,28 +102,3 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/final/*.whl
-
-  # The pure artifacts: the sdist + py3-none-any wheel (the fallback
-  # every non-covered platform installs) built WITHOUT vendoring, so
-  # the any wheel never carries a platform dylib (the 0.1.0 bug).
-  pure:
-    name: Pure sdist + wheel
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - run: python3 -m pip install -q build
-      - run: python3 -m build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wheels-pure
-          path: dist/*py3-none-any*.whl
-      - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/*.tar.gz
-            dist/*py3-none-any*.whl
