@@ -58,9 +58,15 @@ jobs:
       - name: Build the C shared library
         shell: bash
         run: |
-          cmake -B libteptris-src/build -S libteptris-src -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
-            -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON
+          FLAGS="-G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+                 -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON"
+          if [[ "$(uname -s)" == MINGW* ]]; then
+            # windows runners have a mingw gcc on PATH; the ext links with
+            # MSVC, which needs teptris.lib + teptris.dll, so build with cl
+            FLAGS="$FLAGS -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl"
+          fi
+          # shellcheck disable=SC2086
+          cmake -B libteptris-src/build -S libteptris-src $FLAGS
           cmake --build libteptris-src/build
 
       - name: Build the extension in place
