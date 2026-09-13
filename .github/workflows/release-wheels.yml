@@ -62,11 +62,14 @@ jobs:
           TEPTRIS_LIBDIR: ${{ github.workspace }}/libteptris-src/build/src
         run: |
           python3 setup.py build_ext --inplace
+          ls -la libteptris-src/build/src/
           if [ "$(uname -s)" = "Darwin" ]; then
-            cp libteptris-src/build/src/libteptris.0.dylib src/teptris/ 2>/dev/null || true
+            cp -L libteptris-src/build/src/libteptris.0.dylib src/teptris/
           else
-            cp libteptris-src/build/src/libteptris.so.0* src/teptris/ 2>/dev/null || true
+            cp -L libteptris-src/build/src/libteptris.so.0 src/teptris/
+            cp -L libteptris-src/build/src/libteptris.so.0.* src/teptris/ || true
           fi
+          ls -la src/teptris/
 
       - name: Build the wheel (no isolation; ext already built)
         env:
