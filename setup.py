@@ -11,9 +11,13 @@ ext = Extension(
     include_dirs=[inc],
     library_dirs=[libdir],
     libraries=["teptris"],
-    # @loader_path is Mach-O; ELF spells the loader-relative rpath $ORIGIN
-    extra_link_args=[
-        "-Wl,-rpath," + ("@loader_path" if sys.platform == "darwin" else "$ORIGIN")
-    ],
+    # @loader_path is Mach-O; ELF spells the loader-relative rpath $ORIGIN;
+    # PE has neither — the DLL ships beside the .pyd and CPython 3.8+
+    # loads it via LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR
+    extra_link_args=(
+        []
+        if sys.platform == "win32"
+        else ["-Wl,-rpath," + ("@loader_path" if sys.platform == "darwin" else "$ORIGIN")]
+    ),
 )
 setup(ext_modules=[ext])
