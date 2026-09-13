@@ -4,3 +4,6 @@ build/
 dist/
 .venv/
 src/teptris/_platform/
+src/teptris/*.so
+src/teptris/*.dylib
+src/teptris/_platform/
