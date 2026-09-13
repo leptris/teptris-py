@@ -47,8 +47,13 @@ jobs:
       - name: Install build tooling
         shell: bash
         run: |
-          python3 -m pip install -q setuptools wheel build auditwheel
-          if [ "$(uname -s)" = "Linux" ]; then sudo apt-get update -qq && sudo apt-get install -y -qq cmake ninja-build >/dev/null; else brew install cmake ninja; fi
+          # ninja via pip: official wheels for every OS (Windows runners ship
+          # cmake/MSVC already; no apt/brew exists there)
+          python3 -m pip install -q setuptools wheel build ninja auditwheel
+          case "$(uname -s)" in
+            Linux)  sudo apt-get update -qq && sudo apt-get install -y -qq cmake >/dev/null ;;
+            Darwin) brew install cmake ;;
+          esac
 
       - name: Build the C shared library
         shell: bash
