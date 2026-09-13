@@ -28,8 +28,8 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Resolve the lockstep coordinates
-        run: |
         shell: bash
+        run: |
           set -eu
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
           # Lockstep pin: binding 0.2.0 rides libteptris 0.1.1 (the C
@@ -45,14 +45,14 @@ jobs:
           ref: ${{ env.C_TAG }}
 
       - name: Install build tooling
-        run: |
         shell: bash
+        run: |
           python3 -m pip install -q setuptools wheel build auditwheel
           if [ "$(uname -s)" = "Linux" ]; then sudo apt-get update -qq && sudo apt-get install -y -qq cmake ninja-build >/dev/null; else brew install cmake ninja; fi
 
       - name: Build the C shared library
-        run: |
         shell: bash
+        run: |
           cmake -B libteptris-src/build -S libteptris-src -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
             -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON
@@ -62,8 +62,8 @@ jobs:
         env:
           TEPTRIS_INCLUDE: ${{ github.workspace }}/libteptris-src/src/include
           TEPTRIS_LIBDIR: ${{ github.workspace }}/libteptris-src/build/src
-        run: |
         shell: bash
+        run: |
           python3 setup.py build_ext --inplace
           ls -la libteptris-src/build/src/
           case "$(uname -s)" in
@@ -83,8 +83,8 @@ jobs:
         shell: bash
 
       - name: Finalize (macOS platform tag / manylinux repair)
-        run: |
         shell: bash
+        run: |
           mkdir -p dist/final
           case "$(uname -s)" in
             Darwin)
@@ -105,8 +105,8 @@ jobs:
           ls -la dist/final/
 
       - name: Smoke test the installed wheel
-        run: |
         shell: bash
+        run: |
           python3 -m venv /tmp/smoke
           if [ "$(uname -s)" = "MINGW"* ] || [ "$(uname -s)" = "MSYS"* ]; then
             PY=/tmp/smoke/Scripts/python
