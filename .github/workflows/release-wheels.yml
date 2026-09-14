@@ -34,7 +34,7 @@ jobs:
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
           # Lockstep pin: binding 0.2.0 rides libteptris 0.1.1 (the C
           # core has no 0.2.x; bump this pin when the C tag moves).
-          echo "C_TAG=v0.1.6" >> "$GITHUB_ENV"
+          echo "C_TAG=v0.1.9" >> "$GITHUB_ENV"
           echo "PY_VERSION=${VERSION}" >> "$GITHUB_ENV"
 
       - name: Checkout libteptris (the C core, at the tag)
@@ -136,7 +136,9 @@ jobs:
           esac
           $PY -m pip install -q dist/final/*.whl
           cd /tmp && env -u TEPTRIS_LIB_PATH $PY -c \
-            "import teptris; assert teptris.loads('a = 1') == {'a': 1}; print('smoke ok')"
+            "import teptris; assert teptris.loads('a = 1') == {'a': 1}; \
+             o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n'); \
+             assert teptris.loads(teptris.dumps(o)) == o; print('smoke ok')"
 
       - uses: actions/upload-artifact@v4
         with:

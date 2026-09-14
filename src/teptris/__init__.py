@@ -1,12 +1,12 @@
 """teptris — TOML for Python at libleptris speed.
 
-Native extension over libteptris (C11 TOML 1.0), no fallback. API shape
+Native extension over libteptris (C11 TOML 1.1 grammar), no fallback. API shape
 mirrors tomllib/tomli: loads(str|bytes) -> dict raising TOMLDecodeError;
 dumps(obj) -> str in the tomli_w spirit. Datetime mapping mirrors
 tomllib: aware/naive datetime, date, time.
 """
 from ._native import loads as _loads
-from .__dumps import dumps
+from ._native import dumps
 from ._native import DecodeError as _DecodeError
 
 
