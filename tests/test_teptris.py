@@ -68,3 +68,55 @@ class Loads(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Dumps(unittest.TestCase):
+    def test_scalars_and_roundtrip(self):
+        obj = {"s": "hello", "i": -42, "f": 3.14, "b": True,
+               "arr": [1, 2.5, "x"], "sub": {"k": 1}}
+        self.assertEqual(teptris.loads(teptris.dumps(obj)), obj)
+
+    def test_datetimes_exact(self):
+        import datetime as dt
+        tz = dt.timezone(dt.timedelta(hours=5, minutes=30))
+        obj = {"aware": dt.datetime(2026, 9, 15, 10, 30, 15, 500000, tzinfo=tz),
+               "naive": dt.datetime(2026, 9, 15, 10, 30, 15),
+               "d": dt.date(2026, 9, 15),
+               "t": dt.time(7, 32)}
+        out = teptris.dumps(obj)
+        self.assertIn("aware = 2026-09-15T10:30:15.5+05:30", out)
+        self.assertIn("naive = 2026-09-15T10:30:15", out)
+        self.assertEqual(teptris.loads(out), obj)
+
+    def test_float_edges(self):
+        import math
+        obj = {"zero": 0.0, "neg_zero": -0.0, "nan": float("nan"),
+               "inf": float("inf"), "neg_inf": float("-inf")}
+        out = teptris.loads(teptris.dumps(obj))
+        self.assertEqual(out["zero"], 0.0)
+        self.assertTrue(math.copysign(1.0, out["neg_zero"]) < 0)
+        self.assertTrue(math.isnan(out["nan"]))
+        self.assertEqual(out["inf"], float("inf"))
+        self.assertEqual(out["neg_inf"], float("-inf"))
+
+    def test_mixed_and_aot(self):
+        obj = {"mix": [{"q": 1}, 2], "nested": [[1, 2], [3]],
+               "aot": [{"n": 1}, {"n": 2}]}
+        out = teptris.dumps(obj)
+        self.assertIn("mix = [{q = 1}, 2]", out)
+        self.assertIn("nested = [[1, 2], [3]]", out)
+        self.assertEqual(teptris.loads(out), obj)
+
+    def test_rejects(self):
+        with self.assertRaises(TypeError):
+            teptris.dumps([1, 2])
+        with self.assertRaises(TypeError):
+            teptris.dumps({"x": object()})
+        with self.assertRaises(TypeError):
+            teptris.dumps({1: 2})
+
+    def test_special_strings(self):
+        obj = {"esc": "a\"b\\c\nd", "uni": "héllo", "lit": "no 'quotes' here"}
+        out = teptris.dumps(obj)
+        self.assertIn("\"a\\\"b\\\\c\\nd\"", out)
+        self.assertEqual(teptris.loads(out), obj)
