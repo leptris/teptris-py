@@ -130,11 +130,10 @@ jobs:
         shell: bash
         run: |
           python3 -m venv /tmp/smoke
-          if [ "$(uname -s)" = "MINGW"* ] || [ "$(uname -s)" = "MSYS"* ]; then
-            PY=/tmp/smoke/Scripts/python
-          else
-            PY=/tmp/smoke/bin/python
-          fi
+          case "$(uname -s)" in
+            MINGW*|MSYS*) PY=/tmp/smoke/Scripts/python ;;
+            *)            PY=/tmp/smoke/bin/python ;;
+          esac
           $PY -m pip install -q dist/final/*.whl
           cd /tmp && env -u TEPTRIS_LIB_PATH $PY -c \
             "import teptris; assert teptris.loads('a = 1') == {'a': 1}; print('smoke ok')"
