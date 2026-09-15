@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "teptris"
-version = "0.2.5"
-description = "TOML for Python at libleptris speed (ctypes, no C extension)"
+version = "0.2.6"
+description = "TOML for Python at libteptris speed (native C extension, no fallback)"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }

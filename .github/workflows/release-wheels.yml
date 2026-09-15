@@ -2,7 +2,8 @@ name: Release wheels
 
 # Native-extension wheels (no fallback): every wheel builds teptris._native
 # against the C core at the lockstep tag and bundles the shared library
-# chain beside it (@loader_path rpath on ELF/Mach-O).
+# beside it (@loader_path rpath on Mach-O, $ORIGIN on ELF, DLL next to the
+# .pyd on Windows). Musl wheels build inside an Alpine container (wheel-musl).
 
 on:
   push:
@@ -19,8 +20,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm, windows-latest]
-        python: ["3.10", "3.11", "3.12", "3.13"]
+        os: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm]
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        exclude:
+          # no macOS arm64 interpreters before 3.10; x86_64 macs (and
+          # Rosetta pythons) resolve the macos-15-intel wheels
+          - { os: macos-latest,    python: "3.8" }
+          - { os: macos-latest,    python: "3.9" }
+          # ARM64 Windows interpreters exist only for 3.11+
+          - { os: windows-11-arm,  python: "3.8" }
+          - { os: windows-11-arm,  python: "3.9" }
+          - { os: windows-11-arm,  python: "3.10" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,8 +42,8 @@ jobs:
         run: |
           set -eu
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
-          # Lockstep pin: binding 0.2.0 rides libteptris 0.1.1 (the C
-          # core has no 0.2.x; bump this pin when the C tag moves).
+          # Lockstep pin: the binding rides the C core tag below; bump
+          # this pin when the C tag moves.
           echo "C_TAG=v0.1.12" >> "$GITHUB_ENV"
           echo "PY_VERSION=${VERSION}" >> "$GITHUB_ENV"
 
@@ -69,14 +79,25 @@ jobs:
       # environment so library (teptris.lib) and extension share toolchains.
       # STATIC=OFF: on MSVC+Ninja the static lib and the shared import lib
       # would both emit src/teptris.lib and ninja aborts on the collision.
-      - name: Build the C shared library (Windows, MSVC)
-        if: runner.os == 'Windows'
+      - name: Build the C shared library (Windows x64, MSVC)
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
           call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
           rem MSVC puts the import lib in the ARCHIVE dir (build root by
           rem default); keep it beside the dll where setup.py links from
+          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
+          cmake --build libteptris-src/build
+
+      # arm64 runners carry the ARM64 VC tools; vcvarsall arm64 = native
+      # arm64 host and target (no x64 cross tools on the image).
+      - name: Build the C shared library (Windows arm64, MSVC)
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VSPATH=%%i"
+          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" arm64
           cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
           cmake --build libteptris-src/build
 
@@ -147,9 +168,79 @@ jobs:
 
       - name: Attach wheels to the release
         if: startsWith(github.ref, 'refs/tags/v')
-        # 20 matrix cells race one release; PyPI (manual twine from the
+        # matrix cells race one release; PyPI (manual twine from the
         # artifacts) is the delivery channel, so attachment failures
         # (create/upload races) must not fail the build
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/final/*.whl
+
+  wheel-musl:
+    name: Wheel (musl) on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout libteptris (the C core, at the tag)
+        uses: actions/checkout@v4
+        with:
+          repository: leptris/teptris
+          path: libteptris-src
+          ref: v0.1.12
+
+      # Musl builds in an Alpine container (JS actions stay on the host);
+      # the smoke test runs inside the container — a glibc host python
+      # cannot load the musl extension.
+      - name: Build and smoke-test the wheel in an Alpine container
+        env:
+          PY: ${{ matrix.python }}
+        run: |
+          docker run --rm \
+            -v "$PWD:/work" \
+            -w /work \
+            -e py="${PY}" \
+            "python:${PY}-alpine" sh -c '
+              set -eux
+              apk add --no-cache build-base cmake
+              cmake -B libteptris-src/build -S libteptris-src -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+                -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON \
+                -DTEPTRIS_BUILD_STATIC=OFF
+              cmake --build libteptris-src/build
+              pip install -q setuptools wheel build
+              export TEPTRIS_INCLUDE=/work/libteptris-src/src/include
+              export TEPTRIS_LIBDIR=/work/libteptris-src/build/src
+              python setup.py build_ext --inplace
+              cp -L libteptris-src/build/src/libteptris.so.0 src/teptris/
+              cp -L libteptris-src/build/src/libteptris.so.0.* src/teptris/ || true
+              python -m build --wheel --no-isolation
+              mkdir -p dist/final
+              arch=$(uname -m)
+              python -m wheel tags --platform-tag "musllinux_1_2_${arch}" --remove dist/*.whl
+              mv dist/*.whl dist/final/
+              pip install -q dist/final/*.whl
+              cd /tmp && python - <<"PYEOF"
+          import teptris
+          assert teptris.loads("a = 1") == {"a": 1}
+          o = teptris.loads("t = 07:32\n[m]\nk = 1.5\n")
+          assert teptris.loads(teptris.dumps(o)) == o
+          print("musl smoke ok")
+          PYEOF
+            '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-musl-${{ matrix.os }}-${{ matrix.python }}
+          path: dist/final/*.whl
+
+      - name: Attach wheels to the release
+        if: startsWith(github.ref, 'refs/tags/v')
         continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
