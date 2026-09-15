@@ -207,7 +207,7 @@ jobs:
             -e py="${PY}" \
             "python:${PY}-alpine" sh -c '
               set -eux
-              apk add --no-cache build-base cmake
+              apk add --no-cache build-base cmake ninja
               cmake -B libteptris-src/build -S libteptris-src -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
                 -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON \
