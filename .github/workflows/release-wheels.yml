@@ -150,16 +150,16 @@ jobs:
           esac
           ls -la dist/final/
 
+      # venv-free smoke: the 3.8 windows toolcache dies inside venv
+      # bootstrap (WinError 2 spawning the venv python); a --target
+      # install exercises the same wheel contents on every cell.
+      # CWD import keeps the path POSIX-shell-only — no env-var
+      # translation trouble for native Windows python.
       - name: Smoke test the installed wheel
         shell: bash
         run: |
-          python3 -m venv /tmp/smoke
-          case "$(uname -s)" in
-            MINGW*|MSYS*) PY=/tmp/smoke/Scripts/python ;;
-            *)            PY=/tmp/smoke/bin/python ;;
-          esac
-          $PY -m pip install -q dist/final/*.whl
-          cd /tmp && env -u TEPTRIS_LIB_PATH $PY -c \
+          python3 -m pip install -q --target /tmp/smokelib dist/final/*.whl
+          cd /tmp/smokelib && env -u TEPTRIS_LIB_PATH python3 -c \
             "import teptris; assert teptris.loads('a = 1') == {'a': 1}; \
              o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n'); \
              assert teptris.loads(teptris.dumps(o)) == o; print('smoke ok')"
