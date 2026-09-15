@@ -59,7 +59,10 @@ jobs:
         run: |
           # ninja via pip: official wheels for every OS (Windows runners ship
           # cmake/MSVC already; no apt/brew exists there)
-          python3 -m pip install -q setuptools wheel build ninja auditwheel
+          # ">=61" matters: the 3.8 toolcache ships setuptools 56, and a
+          # bare 'pip install setuptools' is a no-op once any version is
+          # present — build --no-isolation then misses the floor
+          python3 -m pip install -q "setuptools>=61" wheel build ninja auditwheel
           case "$(uname -s)" in
             Linux)  sudo apt-get update -qq && sudo apt-get install -y -qq cmake >/dev/null ;;
             Darwin) brew install cmake ;;
@@ -213,7 +216,7 @@ jobs:
                 -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON \
                 -DTEPTRIS_BUILD_STATIC=OFF
               cmake --build libteptris-src/build
-              pip install -q setuptools wheel build
+              pip install -q "setuptools>=61" wheel build
               export TEPTRIS_INCLUDE=/work/libteptris-src/src/include
               export TEPTRIS_LIBDIR=/work/libteptris-src/build/src
               python setup.py build_ext --inplace
