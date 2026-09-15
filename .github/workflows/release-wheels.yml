@@ -44,7 +44,7 @@ jobs:
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
           # Lockstep pin: the binding rides the C core tag below; bump
           # this pin when the C tag moves.
-          echo "C_TAG=v0.1.12" >> "$GITHUB_ENV"
+          echo "C_TAG=v0.1.14" >> "$GITHUB_ENV"
           echo "PY_VERSION=${VERSION}" >> "$GITHUB_ENV"
 
       - name: Checkout libteptris (the C core, at the tag)
@@ -68,18 +68,22 @@ jobs:
             Darwin) brew install cmake ;;
           esac
 
-      - name: Build the C shared library (non-Windows)
+      # Two-stage PGO (C core script): instrumented build, training via
+      # the teptris CLI over a generated corpus, -fprofile-use rebuild.
+      # Measured +3-13% on the parse shapes (C repo benchmarks/LEDGER.md).
+      - name: Build the C shared library with PGO (non-Windows)
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          cmake -B libteptris-src/build -S libteptris-src -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
-            -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON \
-            -DTEPTRIS_BUILD_STATIC=OFF
-          cmake --build libteptris-src/build
+          python3 libteptris-src/scripts/gen_bench_corpus.py libteptris-src/bench-corpus
+          TEPTRIS_PGO_SHARED=1 TEPTRIS_PGO_LTO=1 \
+            bash libteptris-src/scripts/build-pgo.sh \
+              libteptris-src libteptris-src/build libteptris-src/bench-corpus
 
       # cl is not on bash PATH; cmake must be configured inside the MSVC
       # environment so library (teptris.lib) and extension share toolchains.
+      # Windows stays non-PGO for now: the MSVC /GENPROFILE flavor is not
+      # wired (scripts/build-pgo.sh refuses MSVC with a clear error).
       # STATIC=OFF: on MSVC+Ninja the static lib and the shared import lib
       # would both emit src/teptris.lib and ninja aborts on the collision.
       - name: Build the C shared library (Windows x64, MSVC)
@@ -195,7 +199,7 @@ jobs:
         with:
           repository: leptris/teptris
           path: libteptris-src
-          ref: v0.1.12
+          ref: v0.1.14
 
       # Musl builds in an Alpine container (JS actions stay on the host);
       # the smoke test runs inside the container — a glibc host python
@@ -210,12 +214,9 @@ jobs:
             -e py="${PY}" \
             "python:${PY}-alpine" sh -c '
               set -eux
-              apk add --no-cache build-base cmake ninja
-              cmake -B libteptris-src/build -S libteptris-src -G Ninja \
-                -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
-                -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON \
-                -DTEPTRIS_BUILD_STATIC=OFF
-              cmake --build libteptris-src/build
+              apk add --no-cache build-base cmake ninja bash
+              python3 /work/libteptris-src/scripts/gen_bench_corpus.py /work/libteptris-src/bench-corpus
+              TEPTRIS_PGO_SHARED=1 TEPTRIS_PGO_LTO=1 bash /work/libteptris-src/scripts/build-pgo.sh /work/libteptris-src /work/libteptris-src/build /work/libteptris-src/bench-corpus
               pip install -q "setuptools>=61" wheel build
               export TEPTRIS_INCLUDE=/work/libteptris-src/src/include
               export TEPTRIS_LIBDIR=/work/libteptris-src/build/src
