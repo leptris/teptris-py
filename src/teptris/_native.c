@@ -116,6 +116,19 @@ static PyObject *ext_load(PyObject *self, PyObject *args) {
 
 static int build_table(teptris_builder *b, PyObject *obj);
 
+/* PyDateTime_DATE_GET_TZINFO went public in 3.10; the pre-3.10 path
+ * reads the attribute instead (always present on datetime instances).
+ * Returns a strong reference on both paths. */
+static PyObject *dt_tzinfo(PyObject *v) {
+#if PY_VERSION_HEX >= 0x030A00F0
+    PyObject *tz = PyDateTime_DATE_GET_TZINFO(v);
+    Py_XINCREF(tz);
+    return tz;
+#else
+    return PyObject_GetAttrString(v, "tzinfo");
+#endif
+}
+
 static int dump_check(teptris_status st) {
     if (st == TEPTRIS_OK) return 0;
     if (st == TEPTRIS_ERR_ALLOC) { PyErr_NoMemory(); return -1; }
@@ -158,21 +171,23 @@ static int put_scalar(teptris_builder *b, const char *key, size_t klen,
         dt.second = PyDateTime_DATE_GET_SECOND(v);
         dt.nanosecond =
             (uint32_t)PyDateTime_DATE_GET_MICROSECOND(v) * 1000u;
-        PyObject *tz = PyDateTime_DATE_GET_TZINFO(v);
-        if (tz != Py_None) {
-            PyObject *off = PyObject_CallMethod(tz, "utcoffset", "O", v);
-            if (!off) return -1;
-            if (off != Py_None) {
-                dt.offset_seconds =
-                    PyDateTime_DELTA_GET_DAYS(off) * 86400 +
-                    PyDateTime_DELTA_GET_SECONDS(off);
-            }
-            Py_DECREF(off);
+        PyObject *tz = dt_tzinfo(v);
+        if (tz == Py_None) {
+            Py_DECREF(tz);
             return dump_check(teptris_builder_put_datetime(
-                b, key, klen, TEPTRIS_DATETIME_OFFSET, &dt));
+                b, key, klen, TEPTRIS_DATETIME_LOCAL, &dt));
         }
+        PyObject *off = PyObject_CallMethod(tz, "utcoffset", "O", v);
+        Py_DECREF(tz);
+        if (!off) return -1;
+        if (off != Py_None) {
+            dt.offset_seconds =
+                PyDateTime_DELTA_GET_DAYS(off) * 86400 +
+                PyDateTime_DELTA_GET_SECONDS(off);
+        }
+        Py_DECREF(off);
         return dump_check(teptris_builder_put_datetime(
-            b, key, klen, TEPTRIS_DATETIME_LOCAL, &dt));
+            b, key, klen, TEPTRIS_DATETIME_OFFSET, &dt));
     }
     if (PyDate_Check(v)) {
         teptris_datetime dt;

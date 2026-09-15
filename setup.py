@@ -20,4 +20,8 @@ ext = Extension(
         else ["-Wl,-rpath," + ("@loader_path" if sys.platform == "darwin" else "$ORIGIN")]
     ),
 )
-setup(ext_modules=[ext])
+# package_dir spelled here too: raw `setup.py build_ext --inplace`
+# (which the wheel workflow runs) doesn't apply the pyproject
+# src-layout on older setuptools (3.8 cells resolved one), and then
+# the inplace copy targets teptris/ instead of src/teptris/.
+setup(ext_modules=[ext], package_dir={"": "src"})
