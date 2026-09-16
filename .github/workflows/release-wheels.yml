@@ -110,31 +110,22 @@ jobs:
 
       # arm64 runners carry the ARM64 VC tools; vcvarsall arm64 = native
       # arm64 host and target (no x64 cross tools on the image).
-      - name: C library PGO train (Windows arm64, MSVC)
+      - name: Build the C shared library (Windows arm64, MSVC; no PGO)
         if: runner.os == 'Windows' && runner.arch == 'ARM64'
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VSPATH=%%i"
           call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" arm64
-          python libteptris-src\scripts\gen_bench_corpus.py libteptris-src\bench-corpus
-          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_PROFILE_TRAIN=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
+          rem PGO stays OFF on arm64: the ARM64 MSVC toolchain accepts
+          rem /GENPROFILE but emits no .pgd (verified by artifact dumps;
+          rem x64 with identical CMake links, trains and relinks fine).
+          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
           cmake --build libteptris-src/build
-          rem DIAG: artifact paths + the teptris_shared link line
-          dir /s /b libteptris-src\build\*.exe libteptris-src\build\*.dll libteptris-src\build\*.pgd libteptris-src\build\*.pgc
-          ninja -C libteptris-src/build -t commands src/CMakeFiles/teptris_shared.dir | findstr /i "GENPROFILE LTCG"
-          copy libteptris-src\build\src\teptris.dll libteptris-src\build\cli\teptris.dll
-          for %%f in (libteptris-src\bench-corpus\*.toml) do libteptris-src\build\cli\teptris.exe format "%%f" >NUL
-          rem pgomgr is not on PATH under vcvarsall arm64 (the ARM64 image
-          rem skips the PGO tools dir); resolve it under the MSVC tree
-          set "PGOMGR="
-          for /f "delims=" %%g in ('dir /s /b "%VSPATH%\VC\Tools\MSVC\pgomgr.exe" 2^>NUL') do if not defined PGOMGR set "PGOMGR=%%g"
-          if not defined PGOMGR (echo pgomgr.exe not found under MSVC tools & exit /b 1)
-          "%PGOMGR%" /merge libteptris-src\build\cli\*.pgc libteptris-src\build\src\teptris.pgd
 
       # use stage: /LTCG /USEPROFILE reads the merged .pgd beside the
       # dll; flag change forces the full recompile+relink
-      - name: C library PGO use (Windows, MSVC)
-        if: runner.os == 'Windows'
+      - name: C library PGO use (Windows x64, MSVC)
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VSPATH=%%i"
