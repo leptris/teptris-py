@@ -101,7 +101,12 @@ jobs:
           rem dll beside the trainer so the .pgc files land in one place
           copy libteptris-src\build\src\teptris.dll libteptris-src\build\cli\teptris.dll
           for %%f in (libteptris-src\bench-corpus\*.toml) do libteptris-src\build\cli\teptris.exe format "%%f" >/dev/null
-          pgomgr /merge libteptris-src\build\cli\*.pgc libteptris-src\build\src\teptris.pgd
+          rem pgomgr is not on PATH under vcvarsall arm64 (the ARM64 image
+          rem skips the PGO tools dir); resolve it under the MSVC tree
+          set "PGOMGR="
+          for /f "delims=" %%g in ('dir /s /b "%VSPATH%\VC\Tools\MSVC\pgomgr.exe" 2^>NUL') do if not defined PGOMGR set "PGOMGR=%%g"
+          if not defined PGOMGR (echo pgomgr.exe not found under MSVC tools & exit /b 1)
+          "%PGOMGR%" /merge libteptris-src\build\cli\*.pgc libteptris-src\build\src\teptris.pgd
 
       # arm64 runners carry the ARM64 VC tools; vcvarsall arm64 = native
       # arm64 host and target (no x64 cross tools on the image).
@@ -116,7 +121,12 @@ jobs:
           cmake --build libteptris-src/build
           copy libteptris-src\build\src\teptris.dll libteptris-src\build\cli\teptris.dll
           for %%f in (libteptris-src\bench-corpus\*.toml) do libteptris-src\build\cli\teptris.exe format "%%f" >/dev/null
-          pgomgr /merge libteptris-src\build\cli\*.pgc libteptris-src\build\src\teptris.pgd
+          rem pgomgr is not on PATH under vcvarsall arm64 (the ARM64 image
+          rem skips the PGO tools dir); resolve it under the MSVC tree
+          set "PGOMGR="
+          for /f "delims=" %%g in ('dir /s /b "%VSPATH%\VC\Tools\MSVC\pgomgr.exe" 2^>NUL') do if not defined PGOMGR set "PGOMGR=%%g"
+          if not defined PGOMGR (echo pgomgr.exe not found under MSVC tools & exit /b 1)
+          "%PGOMGR%" /merge libteptris-src\build\cli\*.pgc libteptris-src\build\src\teptris.pgd
 
       # use stage: /LTCG /USEPROFILE reads the merged .pgd beside the
       # dll; flag change forces the full recompile+relink
