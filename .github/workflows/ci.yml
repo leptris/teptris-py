@@ -1,0 +1,106 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-smoke-test:
+    name: ${{ matrix.os }} py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # one cell per build flavor: clang (darwin), gcc (ubuntu x64/arm),
+        # MSVC x64 with the full PGO train/use chain (the exact steps the
+        # release runs — a broken PGO stage must fail here, not at tag time)
+        include:
+          - { os: macos-latest,     python-version: '3.12' }
+          - { os: ubuntu-latest,    python-version: '3.12' }
+          - { os: ubuntu-24.04-arm, python-version: '3.12' }
+          - { os: windows-latest,   python-version: '3.12' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Checkout libteptris (main)
+        uses: actions/checkout@v4
+        with:
+          repository: leptris/teptris
+          path: libteptris-src
+          ref: main
+
+      - name: Install build tooling
+        shell: bash
+        run: |
+          python3 -m pip install -q "setuptools>=61" wheel build ninja
+          case "$(uname -s)" in
+            Linux)  sudo apt-get update -qq && sudo apt-get install -y -qq cmake >/dev/null ;;
+            Darwin) brew install cmake ;;
+          esac
+
+      - name: Build the C shared library with PGO (non-Windows)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          python3 libteptris-src/scripts/gen_bench_corpus.py libteptris-src/bench-corpus
+          TEPTRIS_PGO_SHARED=1 TEPTRIS_PGO_LTO=1 \
+            bash libteptris-src/scripts/build-pgo.sh \
+              libteptris-src libteptris-src/build libteptris-src/bench-corpus
+
+      # mirrors release-wheels.yml: vcvars, /GENPROFILE train, pgomgr
+      # merge, /USEPROFILE relink — the chain windows wheels ship with
+      - name: C library PGO train (Windows x64, MSVC)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
+          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
+          python libteptris-src\scripts\gen_bench_corpus.py libteptris-src\bench-corpus
+          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_PROFILE_TRAIN=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
+          cmake --build libteptris-src/build
+          copy libteptris-src\build\src\teptris.dll libteptris-src\build\cli\teptris.dll
+          for %%f in (libteptris-src\bench-corpus\*.toml) do libteptris-src\build\cli\teptris.exe format "%%f" >NUL
+          pgomgr /merge libteptris-src\build\cli\*.pgc libteptris-src\build\src\teptris.pgd
+
+      - name: C library PGO use (Windows x64, MSVC)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
+          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
+          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_PROFILE_USE=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
+          cmake --build libteptris-src/build
+
+      - name: Build extension + wheel
+        shell: bash
+        env:
+          TEPTRIS_INCLUDE: ${{ github.workspace }}/libteptris-src/src/include
+          TEPTRIS_LIBDIR: ${{ github.workspace }}/libteptris-src/build/src
+        run: |
+          python3 setup.py build_ext --inplace
+          case "$(uname -s)" in
+            Darwin) cp -L libteptris-src/build/src/libteptris.0.dylib src/teptris/ ;;
+            Linux)  cp -L libteptris-src/build/src/libteptris.so.0 src/teptris/
+                    cp -L libteptris-src/build/src/libteptris.so.0.* src/teptris/ || true ;;
+            MINGW*) cp libteptris-src/build/src/teptris.dll src/teptris/ 2>/dev/null ||
+                      cp libteptris-src/build/src/Release/teptris.dll src/teptris/ ;;
+          esac
+          python3 -m build --wheel --no-isolation
+
+      - name: Smoke test the wheel (venv-free)
+        shell: bash
+        run: |
+          python3 -m pip install -q --target /tmp/smokelib dist/*.whl
+          cd /tmp/smokelib && python3 -c \
+            "import teptris; assert teptris.loads('a = 1') == {'a': 1}; \
+             o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n'); \
+             assert teptris.loads(teptris.dumps(o)) == o; print('smoke ok')"
+
+      - name: Unit tests
+        shell: bash
+        run: python3 -m unittest discover -s tests -v 2>&1 | tail -3
