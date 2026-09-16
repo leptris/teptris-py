@@ -100,7 +100,7 @@ jobs:
           rem the loader searches the exe dir first: put the instrumented
           rem dll beside the trainer so the .pgc files land in one place
           copy libteptris-src\build\src\teptris.dll libteptris-src\build\cli\teptris.dll
-          for %%f in (libteptris-src\bench-corpus\*.toml) do libteptris-src\build\cli\teptris.exe format "%%f" >/dev/null
+          for %%f in (libteptris-src\bench-corpus\*.toml) do libteptris-src\build\cli\teptris.exe format "%%f" >NUL
           rem pgomgr is not on PATH under vcvarsall arm64 (the ARM64 image
           rem skips the PGO tools dir); resolve it under the MSVC tree
           set "PGOMGR="
@@ -119,8 +119,11 @@ jobs:
           python libteptris-src\scripts\gen_bench_corpus.py libteptris-src\bench-corpus
           cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_PROFILE_TRAIN=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
           cmake --build libteptris-src/build
+          rem DIAG: artifact paths + the teptris_shared link line
+          dir /s /b libteptris-src\build\*.exe libteptris-src\build\*.dll libteptris-src\build\*.pgd libteptris-src\build\*.pgc
+          ninja -C libteptris-src/build -t commands src/CMakeFiles/teptris_shared.dir | findstr /i "GENPROFILE LTCG"
           copy libteptris-src\build\src\teptris.dll libteptris-src\build\cli\teptris.dll
-          for %%f in (libteptris-src\bench-corpus\*.toml) do libteptris-src\build\cli\teptris.exe format "%%f" >/dev/null
+          for %%f in (libteptris-src\bench-corpus\*.toml) do libteptris-src\build\cli\teptris.exe format "%%f" >NUL
           rem pgomgr is not on PATH under vcvarsall arm64 (the ARM64 image
           rem skips the PGO tools dir); resolve it under the MSVC tree
           set "PGOMGR="
