@@ -44,7 +44,7 @@ jobs:
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
           # Lockstep pin: the binding rides the C core tag below; bump
           # this pin when the C tag moves.
-          echo "C_TAG=v0.1.14" >> "$GITHUB_ENV"
+          echo "C_TAG=v0.1.15" >> "$GITHUB_ENV"
           echo "PY_VERSION=${VERSION}" >> "$GITHUB_ENV"
 
       - name: Checkout libteptris (the C core, at the tag)
@@ -82,11 +82,11 @@ jobs:
 
       # cl is not on bash PATH; cmake must be configured inside the MSVC
       # environment so library (teptris.lib) and extension share toolchains.
-      # Windows stays non-PGO for now: the MSVC /GENPROFILE flavor is not
-      # wired (scripts/build-pgo.sh refuses MSVC with a clear error).
       # STATIC=OFF: on MSVC+Ninja the static lib and the shared import lib
       # would both emit src/teptris.lib and ninja aborts on the collision.
-      - name: Build the C shared library (Windows x64, MSVC)
+      # PGO train stage: /GL + /GENPROFILE, CLI trainer over the corpus,
+      # pgomgr merge; the use stage relinks with /USEPROFILE below.
+      - name: C library PGO train (Windows x64, MSVC)
         if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: cmd
         run: |
@@ -94,18 +94,39 @@ jobs:
           call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
           rem MSVC puts the import lib in the ARCHIVE dir (build root by
           rem default); keep it beside the dll where setup.py links from
-          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
+          python libteptris-src\scripts\gen_bench_corpus.py libteptris-src\bench-corpus
+          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_PROFILE_TRAIN=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
           cmake --build libteptris-src/build
+          rem the loader searches the exe dir first: put the instrumented
+          rem dll beside the trainer so the .pgc files land in one place
+          copy libteptris-src\build\src\teptris.dll libteptris-src\build\cli\teptris.dll
+          for %%f in (libteptris-src\bench-corpus\*.toml) do libteptris-src\build\cli\teptris.exe format "%%f" >/dev/null
+          pgomgr /merge libteptris-src\build\cli\*.pgc libteptris-src\build\src\teptris.pgd
 
       # arm64 runners carry the ARM64 VC tools; vcvarsall arm64 = native
       # arm64 host and target (no x64 cross tools on the image).
-      - name: Build the C shared library (Windows arm64, MSVC)
+      - name: C library PGO train (Windows arm64, MSVC)
         if: runner.os == 'Windows' && runner.arch == 'ARM64'
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VSPATH=%%i"
           call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" arm64
-          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
+          python libteptris-src\scripts\gen_bench_corpus.py libteptris-src\bench-corpus
+          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_PROFILE_TRAIN=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
+          cmake --build libteptris-src/build
+          copy libteptris-src\build\src\teptris.dll libteptris-src\build\cli\teptris.dll
+          for %%f in (libteptris-src\bench-corpus\*.toml) do libteptris-src\build\cli\teptris.exe format "%%f" >/dev/null
+          pgomgr /merge libteptris-src\build\cli\*.pgc libteptris-src\build\src\teptris.pgd
+
+      # use stage: /LTCG /USEPROFILE reads the merged .pgd beside the
+      # dll; flag change forces the full recompile+relink
+      - name: C library PGO use (Windows, MSVC)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VSPATH=%%i"
+          if "%RUNNER_ARCH%"=="ARM64" (call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" arm64) else (call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat")
+          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_PROFILE_USE=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
           cmake --build libteptris-src/build
 
       - name: Build the extension in place
@@ -199,7 +220,7 @@ jobs:
         with:
           repository: leptris/teptris
           path: libteptris-src
-          ref: v0.1.14
+          ref: v0.1.15
 
       # Musl builds in an Alpine container (JS actions stay on the host);
       # the smoke test runs inside the container — a glibc host python
