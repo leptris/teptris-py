@@ -14,18 +14,30 @@ implements the TOML 1.1 draft grammar (a strict superset of 1.0)
 with 100% toml-test conformance, and parses at ≥3× the best C/C++
 competitor on every shape.
 
+## Packaging
+
+Wheels are `cp39-abi3` — one per platform (manylinux/musllinux x86_64
+and aarch64, macOS arm64 and x86_64, Windows AMD64 and ARM64), covering
+every CPython >= 3.9 including future minors. The extension statically
+links `libteptris`, so each wheel is a single self-contained module
+(no shared-library chain). Linux wheels build the engine inside each
+container via cibuildwheel so musllinux links musl.
+
 ## Development
 
-The package loads a shared `libteptris` — from `TEPTRIS_LIB_PATH`, a
-vendored `platform/` directory, the sibling C checkout's build tree, or
-the system loader.
+`setup.py` links the engine statically when it finds
+`libteptris.a`/`teptris.lib` under `TEPTRIS_LIBDIR` (what the wheels
+ship); otherwise it falls back to the shared library with an rpath to
+its build tree. Point `TEPTRIS_INCLUDE`/`TEPTRIS_LIBDIR` at a C
+checkout's build and run the suite:
 
 ```sh
-cmake -B ../teptris/build-shared -S ../teptris \
-    -DCMAKE_BUILD_TYPE=Release -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF
-cmake --build ../teptris/build-shared
-TEPTRIS_LIB_PATH=../teptris/build-shared/src/libteptris.dylib \
-    python3 -m unittest discover -s tests -v
+cmake -B ../teptris/build -S ../teptris \
+    -DCMAKE_BUILD_TYPE=Release -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON
+cmake --build ../teptris/build
+TEPTRIS_INCLUDE=../teptris/src/include TEPTRIS_LIBDIR=../teptris/build/src \
+    python3 setup.py build_ext --inplace
+PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
 Publishing and version numbers are USER release decisions.
