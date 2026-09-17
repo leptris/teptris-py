@@ -21,7 +21,19 @@ case "$(uname -s)" in
     VSPATH=$("$VSWHERE" -latest -products '*' -property installationPath)
     [ -n "$VSPATH" ] || { echo "vswhere found no VS install" >&2; exit 1; }
     if [ "${RUNNER_ARCH:-}" = "ARM64" ]; then VSARCH=arm64; else VSARCH=amd64; fi
-    cmd //c "call \"${VSPATH}\\VC\\Auxiliary\\Build\\vcvarsall.bat\" $VSARCH && cmake -B $SRC\\build -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF && cmake --build $SRC\\build"
+    # generate a .cmd and run it: inline cmd //c strings get mangled by
+    # msys quote conversion; a file sidesteps quoting entirely
+    VCVARS=$(cygpath -w "$VSPATH/VC/Auxiliary/Build/vcvarsall.bat")
+    cat > _build_msvc.cmd <<CMDEOF
+@echo on
+call "$VCVARS" $VSARCH || exit /b 1
+cmake -B $SRC\build -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF || exit /b 1
+cmake --build $SRC\build || exit /b 1
+CMDEOF
+    cmd //c _build_msvc.cmd
+    rc=$?
+    rm -f _build_msvc.cmd
+    exit $rc
     ;;
   *) echo "unsupported platform: $(uname -s)" >&2; exit 1 ;;
 esac

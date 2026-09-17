@@ -22,14 +22,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest,     builds: cp39-abi3-manylinux_x86_64 }
-          - { os: ubuntu-latest,     builds: cp39-abi3-musllinux_x86_64 }
-          - { os: ubuntu-24.04-arm,  builds: cp39-abi3-manylinux_aarch64 }
-          - { os: ubuntu-24.04-arm,  builds: cp39-abi3-musllinux_aarch64 }
-          - { os: macos-latest,      builds: cp39-abi3-macosx_arm64 }
-          - { os: macos-15-intel,    builds: cp39-abi3-macosx_x86_64 }
-          - { os: windows-latest,    builds: cp39-abi3-win_amd64 }
-          - { os: windows-11-arm,    builds: cp39-abi3-win_arm64 }
+          # plain cp39 identifiers: the abi3 wheel tag comes from
+          # bdist_wheel py_limited_api, NOT from the selector (cibuildwheel
+          # has no abi3 grammar; build the minimum CPython, tag it abi3)
+          - { os: ubuntu-latest,     builds: cp39-manylinux_x86_64 }
+          - { os: ubuntu-latest,     builds: cp39-musllinux_x86_64 }
+          - { os: ubuntu-24.04-arm,  builds: cp39-manylinux_aarch64 }
+          - { os: ubuntu-24.04-arm,  builds: cp39-musllinux_aarch64 }
+          - { os: macos-latest,      builds: cp39-macosx_arm64 }
+          - { os: macos-15-intel,    builds: cp39-macosx_x86_64 }
+          - { os: windows-latest,    builds: cp39-win_amd64 }
+          - { os: windows-11-arm,    builds: cp39-win_arm64 }
     steps:
       - uses: actions/checkout@v4
 
