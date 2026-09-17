@@ -1,6 +1,6 @@
 name: cibuildwheel
 
-# cibuildwheel matrix over the static _native module (0.2.10): the lib
+# cibuildwheel matrix over the static abi3 _native module (0.2.11): the lib
 # builds once per platform — two-stage PGO on clang/gcc, plain on MSVC
 # (LTCG-bound) — and every CPython links the same archive. Repair and
 # platform tags are cibuildwheel's; the module is self-contained so
@@ -30,7 +30,7 @@ jobs:
         with:
           repository: leptris/teptris
           path: libteptris-src
-          ref: v0.1.16
+          ref: v0.1.18
 
       - uses: actions/setup-python@v5
         with:
@@ -46,16 +46,15 @@ jobs:
       - name: cibuildwheel
         uses: pypa/cibuildwheel@v3.0.1
         env:
-          CIBW_BUILD: "cp38-* cp39-* cp310-* cp311-* cp312-* cp313-*"
+          CIBW_BUILD: "cp39-abi3-*"
           CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_i686"
           CIBW_ARCHS_WINDOWS: ${{ runner.arch == 'ARM64' && 'ARM64' || 'AMD64' }}
           CIBW_ARCHS_MACOS: ${{ env.CIBW_ARCHS_MACOS }}
+          # relative to the build context: /project only exists inside
+          # the Linux docker cells, native mac/win runners need this
           CIBW_ENVIRONMENT: >-
-            TEPTRIS_INCLUDE=/project/libteptris-src/src/include
-            TEPTRIS_LIBDIR=/project/libteptris-src/build/src
-          CIBW_ENVIRONMENT_WINDOWS: >-
-            TEPTRIS_INCLUDE=/project/libteptris-src/src/include
-            TEPTRIS_LIBDIR=/project/libteptris-src/build/src
+            TEPTRIS_INCLUDE=libteptris-src/src/include
+            TEPTRIS_LIBDIR=libteptris-src/build/src
           CIBW_TEST_COMMAND: >-
             python -c "import teptris; assert teptris.loads('a = 1') == {'a': 1};
             o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n');

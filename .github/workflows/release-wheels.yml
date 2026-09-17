@@ -1,13 +1,11 @@
 name: Release wheels
 
-# Native-extension wheels (no fallback): every wheel builds teptris._native
-# against the C core at the lockstep tag and bundles the shared library
-# beside it (@loader_path rpath on Mach-O, $ORIGIN on ELF, DLL next to the
-# .pyd on Windows). Musl wheels build inside an Alpine container (wheel-musl).
+# SUPERSEDED by cibuildwheel.yml (abi3 era: one cp39-abi3 wheel per
+# platform covers every CPython >= 3.9). Kept dispatch-only as the
+# documented emergency fallback; the tag trigger moved to cibuildwheel
+# so the two lanes never race on a release tag.
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
