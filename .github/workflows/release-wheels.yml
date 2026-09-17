@@ -201,8 +201,6 @@ jobs:
               export TEPTRIS_INCLUDE=/work/libteptris-src/src/include
               export TEPTRIS_LIBDIR=/work/libteptris-src/build/src
               python setup.py build_ext --inplace
-              cp -L libteptris-src/build/src/libteptris.so.0 src/teptris/
-              cp -L libteptris-src/build/src/libteptris.so.0.* src/teptris/ || true
               python -m build --wheel --no-isolation
               mkdir -p dist/final
               arch=$(uname -m)
