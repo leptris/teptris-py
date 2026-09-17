@@ -1,9 +1,27 @@
 #define PY_SSIZE_T_CLEAN
+#ifndef Py_LIMITED_API
+/* abi3 (#20): the datetime C-API is not in the limited API, so all
+ * datetime work goes through cached callables/attributes instead */
+#define Py_LIMITED_API 0x03090000
+#endif
 #include <Python.h>
-#include <datetime.h>
 #include "teptris/teptris.h"
 
 static PyObject *TomlDecodeError;
+/* datetime module callables (limited API: the C-API is unavailable) */
+static PyObject *tep_dt_datetime, *tep_dt_date, *tep_dt_time,
+    *tep_dt_timedelta, *tep_dt_timezone;
+
+/* strong-ref attr read as long; def on missing/invalid (datetime
+ * attributes always exist on well-formed instances) */
+static long attr_long(PyObject *v, const char *name) {
+    PyObject *a = PyObject_GetAttrString(v, name);
+    if (a == NULL) { PyErr_Clear(); return 0; }
+    long r = PyLong_AsLong(a);
+    Py_DECREF(a);
+    if (r == -1 && PyErr_Occurred()) { PyErr_Clear(); return 0; }
+    return r;
+}
 
 static PyObject *obj_from_node(const teptris_node *n) {
     switch (teptris_node_kind(n)) {
@@ -31,7 +49,10 @@ static PyObject *obj_from_node(const teptris_node *n) {
         for (size_t i = 0; i < len; i++) {
             PyObject *v = obj_from_node(teptris_node_array_at(n, i));
             if (!v) { Py_DECREF(a); return NULL; }
-            PyList_SET_ITEM(a, (Py_ssize_t)i, v);
+            /* SetItem steals v on both success and failure */
+            if (PyList_SetItem(a, (Py_ssize_t)i, v) < 0) {
+                Py_DECREF(a); return NULL;
+            }
         }
         return a;
     }
@@ -56,27 +77,39 @@ static PyObject *obj_from_node(const teptris_node *n) {
         teptris_datetime d; teptris_node_datetime(n, &d);
         switch (teptris_node_kind(n)) {
         case TEPTRIS_DATE_LOCAL:
-            return PyDate_FromDate(d.year, d.month, d.day);
+            return PyObject_CallFunctionObjArgs(
+                tep_dt_date, PyLong_FromLong(d.year), PyLong_FromLong(d.month),
+                PyLong_FromLong(d.day), NULL);
         case TEPTRIS_TIME_LOCAL:
-            return PyTime_FromTime(d.hour, d.minute, d.second,
-                                   (int)(d.nanosecond / 1000));
+            return PyObject_CallFunctionObjArgs(
+                tep_dt_time, PyLong_FromLong(d.hour),
+                PyLong_FromLong(d.minute), PyLong_FromLong(d.second),
+                PyLong_FromLong((long)(d.nanosecond / 1000)), NULL);
         default: {
+            PyObject *us = PyLong_FromLong((long)(d.nanosecond / 1000));
+            if (!us) return NULL;
             if (teptris_node_kind(n) == TEPTRIS_DATETIME_LOCAL)
-                return PyDateTime_FromDateAndTime(d.year, d.month, d.day,
-                    d.hour, d.minute, d.second, (int)(d.nanosecond / 1000));
-            /* aware datetime: construct naive then set tzinfo via replace() */
-            int off = d.offset_seconds;
-            PyObject *delta = PyDelta_FromDSU(0, off, 0);
+                return PyObject_CallFunctionObjArgs(
+                    tep_dt_datetime, PyLong_FromLong(d.year),
+                    PyLong_FromLong(d.month), PyLong_FromLong(d.day),
+                    PyLong_FromLong(d.hour), PyLong_FromLong(d.minute),
+                    PyLong_FromLong(d.second), us, NULL);
+            Py_DECREF(us);
+            /* aware: tz = timezone(timedelta(0, off)); datetime(..., tz) */
+            PyObject *delta = PyObject_CallFunctionObjArgs(
+                tep_dt_timedelta, PyLong_FromLong(0),
+                PyLong_FromLong((long)d.offset_seconds), PyLong_FromLong(0),
+                NULL);
             if (!delta) return NULL;
-            PyObject *tz = PyTimeZone_FromOffset(delta);
+            PyObject *tz = PyObject_CallFunctionObjArgs(
+                tep_dt_timezone, delta, NULL);
             Py_DECREF(delta);
             if (!tz) return NULL;
-            /* datetime(y, m, d, h, mi, s, us, tz) — positional ctor */
             PyObject *aware = PyObject_CallFunctionObjArgs(
-                (PyObject *)PyDateTimeAPI->DateTimeType,
-                PyLong_FromLong(d.year), PyLong_FromLong(d.month),
-                PyLong_FromLong(d.day), PyLong_FromLong(d.hour),
-                PyLong_FromLong(d.minute), PyLong_FromLong(d.second),
+                tep_dt_datetime, PyLong_FromLong(d.year),
+                PyLong_FromLong(d.month), PyLong_FromLong(d.day),
+                PyLong_FromLong(d.hour), PyLong_FromLong(d.minute),
+                PyLong_FromLong(d.second),
                 PyLong_FromLong((long)(d.nanosecond / 1000)), tz, NULL);
             Py_DECREF(tz);
             return aware;
@@ -88,13 +121,24 @@ static PyObject *ext_load(PyObject *self, PyObject *args) {
     (void)self;
     PyObject *obj;
     if (!PyArg_ParseTuple(args, "O", &obj)) return NULL;
-    Py_buffer view;
-    if (PyObject_GetBuffer(obj, &view, PyBUF_SIMPLE) < 0) return NULL;
-    const char *data = (const char *)view.buf;
-    Py_ssize_t len = (Py_ssize_t)view.len;
+    const char *data = NULL;
+    Py_ssize_t len = 0;
+    PyObject *keepalive = NULL;
+    if (PyUnicode_Check(obj)) {
+        keepalive = PyUnicode_AsUTF8String(obj);
+        if (!keepalive) return NULL;
+        data = PyBytes_AsString(keepalive);
+        len = PyBytes_Size(keepalive);
+    } else if (PyBytes_Check(obj)) {
+        data = PyBytes_AsString(obj);
+        len = PyBytes_Size(obj);
+    } else {
+        PyErr_SetString(PyExc_TypeError, "loads() expects str or bytes");
+        return NULL;
+    }
     teptris_document *doc = NULL;
     teptris_status st = teptris_parse(data, (size_t)len, NULL, &doc);
-    PyBuffer_Release(&view);
+    Py_XDECREF(keepalive);
     if (st != TEPTRIS_OK) {
         const teptris_error *e = teptris_document_error(doc);
         PyObject *ex = PyObject_CallFunction(TomlDecodeError, "s", e->message);
@@ -116,17 +160,9 @@ static PyObject *ext_load(PyObject *self, PyObject *args) {
 
 static int build_table(teptris_builder *b, PyObject *obj);
 
-/* PyDateTime_DATE_GET_TZINFO went public in 3.10; the pre-3.10 path
- * reads the attribute instead (always present on datetime instances).
- * Returns a strong reference on both paths. */
+/* limited API: attribute reads only */
 static PyObject *dt_tzinfo(PyObject *v) {
-#if PY_VERSION_HEX >= 0x030A00F0
-    PyObject *tz = PyDateTime_DATE_GET_TZINFO(v);
-    Py_XINCREF(tz);
-    return tz;
-#else
     return PyObject_GetAttrString(v, "tzinfo");
-#endif
 }
 
 static int dump_check(teptris_status st) {
@@ -150,27 +186,27 @@ static int put_scalar(teptris_builder *b, const char *key, size_t klen,
     }
     if (PyFloat_Check(v)) {
         return dump_check(teptris_builder_put_float(
-            b, key, klen, PyFloat_AS_DOUBLE(v)));
+            b, key, klen, PyFloat_AsDouble(v)));
     }
     if (PyUnicode_Check(v)) {
-        Py_ssize_t len = 0;
-        const char *s = PyUnicode_AsUTF8AndSize(v, &len);
-        if (!s) return -1;
-        return dump_check(teptris_builder_put_string(b, key, klen, s,
-                                                     (size_t)len));
+        PyObject *kb = PyUnicode_AsUTF8String(v);
+        if (!kb) return -1;
+        int rc = dump_check(teptris_builder_put_string(
+            b, key, klen, PyBytes_AsString(kb), (size_t)PyBytes_Size(kb)));
+        Py_DECREF(kb);
+        return rc;
     }
-    /* PyDateTime_Check first: datetime subclasses date */
-    if (PyDateTime_Check(v)) {
+    /* datetime first: datetime subclasses date */
+    if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_datetime)) {
         teptris_datetime dt;
         memset(&dt, 0, sizeof(dt));
-        dt.year = PyDateTime_GET_YEAR(v);
-        dt.month = PyDateTime_GET_MONTH(v);
-        dt.day = PyDateTime_GET_DAY(v);
-        dt.hour = PyDateTime_DATE_GET_HOUR(v);
-        dt.minute = PyDateTime_DATE_GET_MINUTE(v);
-        dt.second = PyDateTime_DATE_GET_SECOND(v);
-        dt.nanosecond =
-            (uint32_t)PyDateTime_DATE_GET_MICROSECOND(v) * 1000u;
+        dt.year = (int32_t)attr_long(v, "year");
+        dt.month = (uint8_t)attr_long(v, "month");
+        dt.day = (uint8_t)attr_long(v, "day");
+        dt.hour = (uint8_t)attr_long(v, "hour");
+        dt.minute = (uint8_t)attr_long(v, "minute");
+        dt.second = (uint8_t)attr_long(v, "second");
+        dt.nanosecond = (uint32_t)attr_long(v, "microsecond") * 1000u;
         PyObject *tz = dt_tzinfo(v);
         if (tz == Py_None) {
             Py_DECREF(tz);
@@ -182,35 +218,34 @@ static int put_scalar(teptris_builder *b, const char *key, size_t klen,
         if (!off) return -1;
         if (off != Py_None) {
             dt.offset_seconds =
-                PyDateTime_DELTA_GET_DAYS(off) * 86400 +
-                PyDateTime_DELTA_GET_SECONDS(off);
+                attr_long(off, "days") * 86400 +
+                attr_long(off, "seconds");
         }
         Py_DECREF(off);
         return dump_check(teptris_builder_put_datetime(
             b, key, klen, TEPTRIS_DATETIME_OFFSET, &dt));
     }
-    if (PyDate_Check(v)) {
+    if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_date)) {
         teptris_datetime dt;
         memset(&dt, 0, sizeof(dt));
-        dt.year = PyDateTime_GET_YEAR(v);
-        dt.month = PyDateTime_GET_MONTH(v);
-        dt.day = PyDateTime_GET_DAY(v);
+        dt.year = (int32_t)attr_long(v, "year");
+        dt.month = (uint8_t)attr_long(v, "month");
+        dt.day = (uint8_t)attr_long(v, "day");
         return dump_check(teptris_builder_put_datetime(
             b, key, klen, TEPTRIS_DATE_LOCAL, &dt));
     }
-    if (PyTime_Check(v)) {
+    if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_time)) {
         teptris_datetime dt;
         memset(&dt, 0, sizeof(dt));
-        dt.hour = PyDateTime_TIME_GET_HOUR(v);
-        dt.minute = PyDateTime_TIME_GET_MINUTE(v);
-        dt.second = PyDateTime_TIME_GET_SECOND(v);
-        dt.nanosecond =
-            (uint32_t)PyDateTime_TIME_GET_MICROSECOND(v) * 1000u;
+        dt.hour = (uint8_t)attr_long(v, "hour");
+        dt.minute = (uint8_t)attr_long(v, "minute");
+        dt.second = (uint8_t)attr_long(v, "second");
+        dt.nanosecond = (uint32_t)attr_long(v, "microsecond") * 1000u;
         return dump_check(teptris_builder_put_datetime(
             b, key, klen, TEPTRIS_TIME_LOCAL, &dt));
     }
-    PyErr_Format(PyExc_TypeError, "cannot dump %.200s",
-                 Py_TYPE(v)->tp_name);
+    PyErr_Format(PyExc_TypeError, "cannot dump %.200R",
+                 (PyObject *)Py_TYPE(v));
     return -1;
 }
 
@@ -224,9 +259,9 @@ static int build_value(teptris_builder *b, PyObject *v) {
         if (rc == 0) rc = dump_check(teptris_builder_close(b));
     } else if (PyList_Check(v)) {
         rc = dump_check(teptris_builder_open_array(b, NULL, 0));
-        Py_ssize_t n = PyList_GET_SIZE(v);
+        Py_ssize_t n = PyList_Size(v);
         for (Py_ssize_t i = 0; rc == 0 && i < n; i++) {
-            rc = build_value(b, PyList_GET_ITEM(v, i));
+            rc = build_value(b, PyList_GetItem(v, i));
         }
         if (rc == 0) rc = dump_check(teptris_builder_close(b));
     } else {
@@ -248,32 +283,34 @@ static int build_table(teptris_builder *b, PyObject *obj) {
             rc = -1;
             break;
         }
-        Py_ssize_t klen = 0;
-        const char *ks = PyUnicode_AsUTF8AndSize(k, &klen);
-        if (!ks) { rc = -1; break; }
+        PyObject *kb = PyUnicode_AsUTF8String(k);
+        if (!kb) { rc = -1; break; }
+        const char *ks = PyBytes_AsString(kb);
+        size_t klen = (size_t)PyBytes_Size(kb);
         if (PyDict_Check(v)) {
-            rc = dump_check(teptris_builder_open_table(b, ks, (size_t)klen));
+            rc = dump_check(teptris_builder_open_table(b, ks, klen));
             if (rc == 0) rc = build_table(b, v);
             if (rc == 0) rc = dump_check(teptris_builder_close(b));
         } else if (PyList_Check(v)) {
-            Py_ssize_t n = PyList_GET_SIZE(v);
+            Py_ssize_t n = PyList_Size(v);
             bool all_dict = n > 0;
             for (Py_ssize_t i = 0; i < n; i++) {
-                if (!PyDict_Check(PyList_GET_ITEM(v, i))) {
+                if (!PyDict_Check(PyList_GetItem(v, i))) {
                     all_dict = false;
                     break;
                 }
             }
             rc = dump_check(all_dict
-                ? teptris_builder_open_array(b, ks, (size_t)klen)
-                : teptris_builder_open_inline_array(b, ks, (size_t)klen));
+                ? teptris_builder_open_array(b, ks, klen)
+                : teptris_builder_open_inline_array(b, ks, klen));
             for (Py_ssize_t i = 0; rc == 0 && i < n; i++) {
-                rc = build_value(b, PyList_GET_ITEM(v, i));
+                rc = build_value(b, PyList_GetItem(v, i));
             }
             if (rc == 0) rc = dump_check(teptris_builder_close(b));
         } else {
-            rc = put_scalar(b, ks, (size_t)klen, v);
+            rc = put_scalar(b, ks, klen, v);
         }
+        Py_DECREF(kb);
     }
     Py_LeaveRecursiveCall();
     return rc;
@@ -325,7 +362,19 @@ static struct PyModuleDef mod = {PyModuleDef_HEAD_INIT, "teptris._native",
 PyMODINIT_FUNC PyInit__native(void) {
     PyObject *m = PyModule_Create(&mod);
     if (!m) return NULL;
-    PyDateTime_IMPORT;
+    PyObject *dtmod = PyImport_ImportModule("datetime");
+    if (dtmod == NULL) { Py_DECREF(m); return NULL; }
+    tep_dt_datetime = PyObject_GetAttrString(dtmod, "datetime");
+    tep_dt_date = PyObject_GetAttrString(dtmod, "date");
+    tep_dt_time = PyObject_GetAttrString(dtmod, "time");
+    tep_dt_timedelta = PyObject_GetAttrString(dtmod, "timedelta");
+    tep_dt_timezone = PyObject_GetAttrString(dtmod, "timezone");
+    Py_DECREF(dtmod);
+    if (!tep_dt_datetime || !tep_dt_date || !tep_dt_time ||
+        !tep_dt_timedelta || !tep_dt_timezone) {
+        Py_DECREF(m);
+        return NULL;
+    }
     TomlDecodeError = PyErr_NewException("teptris._native.DecodeError", NULL, NULL);
     Py_INCREF(TomlDecodeError);
     PyModule_AddObject(m, "DecodeError", TomlDecodeError);
