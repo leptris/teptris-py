@@ -76,59 +76,24 @@ jobs:
         shell: bash
         run: |
           python3 libteptris-src/scripts/gen_bench_corpus.py libteptris-src/bench-corpus
-          TEPTRIS_PGO_SHARED=1 TEPTRIS_PGO_LTO=1 \
+          # static flavor: one self-contained module, no chain to ship
+          TEPTRIS_PGO_LTO=1 \
             bash libteptris-src/scripts/build-pgo.sh \
               libteptris-src libteptris-src/build libteptris-src/bench-corpus
 
       # cl is not on bash PATH; cmake must be configured inside the MSVC
       # environment so library (teptris.lib) and extension share toolchains.
-      # STATIC=OFF: on MSVC+Ninja the static lib and the shared import lib
-      # would both emit src/teptris.lib and ninja aborts on the collision.
-      # PGO train stage: /GL + /GENPROFILE, CLI trainer over the corpus,
-      # pgomgr merge; the use stage relinks with /USEPROFILE below.
-      - name: C library PGO train (Windows x64, MSVC)
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: cmd
-        run: |
-          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
-          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
-          rem MSVC puts the import lib in the ARCHIVE dir (build root by
-          rem default); keep it beside the dll where setup.py links from
-          python libteptris-src\scripts\gen_bench_corpus.py libteptris-src\bench-corpus
-          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_PROFILE_TRAIN=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
-          cmake --build libteptris-src/build
-          rem the loader searches the exe dir first: put the instrumented
-          rem dll beside the trainer so the .pgc files land in one place
-          copy libteptris-src\build\src\teptris.dll libteptris-src\build\cli\teptris.dll
-          for %%f in (libteptris-src\bench-corpus\*.toml) do libteptris-src\build\cli\teptris.exe format "%%f" >NUL
-          rem plain pgomgr: it is on PATH under vcvars64 (the arm64-only
-          rem resolve died with arm64 PGO, whose toolchain cannot do PGO;
-          rem a quoted resolved path also loses its spaces in cmd)
-          pgomgr /merge libteptris-src\build\cli\*.pgc libteptris-src\build\src\teptris.pgd
-
-      # arm64 runners carry the ARM64 VC tools; vcvarsall arm64 = native
-      # arm64 host and target (no x64 cross tools on the image).
-      - name: Build the C shared library (Windows arm64, MSVC; no PGO)
-        if: runner.os == 'Windows' && runner.arch == 'ARM64'
-        shell: cmd
-        run: |
-          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VSPATH=%%i"
-          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" arm64
-          rem PGO stays OFF on arm64: the ARM64 MSVC toolchain accepts
-          rem /GENPROFILE but emits no .pgd (verified by artifact dumps;
-          rem x64 with identical CMake links, trains and relinks fine).
-          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
-          cmake --build libteptris-src/build
-
-      # use stage: /LTCG /USEPROFILE reads the merged .pgd beside the
-      # dll; flag change forces the full recompile+relink
-      - name: C library PGO use (Windows x64, MSVC)
-        if: runner.os == 'Windows' && runner.arch == 'X64'
+      # Static, plain (no PGO/LTO): MSVC PGO is inherently LTCG and the
+      # setuptools link adds no /LTCG — with the static archive the .pyd
+      # link must stay plain. One self-contained module, no DLL to ship
+      # (the loader chain problems die with the chain).
+      - name: Build the C static library (Windows, MSVC)
+        if: runner.os == 'Windows'
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VSPATH=%%i"
           if "%RUNNER_ARCH%"=="ARM64" (call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" arm64) else (call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat")
-          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_PROFILE_USE=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
+          cmake -B libteptris-src/build -S libteptris-src -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=%CD%\libteptris-src\build\src
           cmake --build libteptris-src/build
 
       - name: Build the extension in place
@@ -138,15 +103,7 @@ jobs:
         shell: bash
         run: |
           python3 setup.py build_ext --inplace
-          ls -la libteptris-src/build/src/
-          case "$(uname -s)" in
-            Darwin) cp -L libteptris-src/build/src/libteptris.0.dylib src/teptris/ ;;
-            Linux)  cp -L libteptris-src/build/src/libteptris.so.0 src/teptris/
-                    cp -L libteptris-src/build/src/libteptris.so.0.* src/teptris/ || true ;;
-            MINGW*) cp libteptris-src/build/src/Release/teptris.dll src/teptris/ 2>/dev/null ||
-                      cp libteptris-src/build/src/teptris.dll src/teptris/ ;;
-          esac
-          ls -la src/teptris/
+          ls -la libteptris-src/build/src/ src/teptris/
 
       - name: Build the wheel (no isolation; ext already built)
         env:
@@ -239,7 +196,7 @@ jobs:
               set -eux
               apk add --no-cache build-base cmake ninja bash
               python3 /work/libteptris-src/scripts/gen_bench_corpus.py /work/libteptris-src/bench-corpus
-              TEPTRIS_PGO_SHARED=1 TEPTRIS_PGO_LTO=1 bash /work/libteptris-src/scripts/build-pgo.sh /work/libteptris-src /work/libteptris-src/build /work/libteptris-src/bench-corpus
+              TEPTRIS_PGO_LTO=1 bash /work/libteptris-src/scripts/build-pgo.sh /work/libteptris-src /work/libteptris-src/build /work/libteptris-src/bench-corpus
               pip install -q "setuptools>=61" wheel build
               export TEPTRIS_INCLUDE=/work/libteptris-src/src/include
               export TEPTRIS_LIBDIR=/work/libteptris-src/build/src
