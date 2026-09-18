@@ -1,0 +1,84 @@
+name: binding-bench
+
+# Guards the Python BINDING hot path (_native.c: loads/dumps
+# materialization, error paths) against silent regressions: every
+# main push benches HEAD against the latest PUBLISHED wheel on the
+# same runner (median-of-3; the engine has its own A/B lane and
+# cannot see the binding layer). Mirrors teptris-ruby's lane.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prev-vs-head:
+    name: previous wheel vs HEAD (regression gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout libteptris (the C core)
+        uses: actions/checkout@v4
+        with:
+          repository: leptris/teptris
+          path: libteptris-src
+          ref: v0.1.24
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # plain static build (non-PGO): this lane gates the BINDING;
+      # engine-side perf has the teptris repo's A/B lane
+      - name: Build the C archive (plain)
+        run: |
+          set -eux
+          python3 -m pip install -q cmake ninja
+          cmake -B libteptris-src/build -S libteptris-src \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF \
+            -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+          cmake --build libteptris-src/build -j
+
+      - name: Install HEAD into venv A
+        run: |
+          python3 -m venv /tmp/head
+          TEPTRIS_INCLUDE="$PWD/libteptris-src/src/include" \
+            TEPTRIS_LIBDIR="$PWD/libteptris-src/build/src" \
+            /tmp/head/bin/pip install -q --no-build-isolation .
+
+      - name: Install the latest published wheel into venv B
+        run: |
+          python3 -m venv /tmp/prev
+          V=$(curl -s https://pypi.org/pypi/teptris/json | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])")
+          echo "prev wheel: $V"
+          /tmp/prev/bin/pip install -q "teptris==$V"
+
+      - name: Bench previous vs HEAD
+        run: |
+          /tmp/prev/bin/python benchmark/prev_vs_head.py prev > prev.txt
+          /tmp/head/bin/python benchmark/prev_vs_head.py head > head.txt
+          cat prev.txt head.txt
+
+      - name: Gate (HEAD must be >= 90% of the published wheel)
+        run: |
+          set -e
+          for m in load_small load_medium dump_medium; do
+            p=$(awk -v m="$m" '$2==m && $1=="prev" {print $3}' prev.txt)
+            h=$(awk -v m="$m" '$2==m && $1=="head" {print $3}' head.txt)
+            ratio=$(awk -v h="$h" -v p="$p" 'BEGIN { printf "%.3f", h/p }')
+            echo "$m: prev=$p head=$h ratio=$ratio"
+            if awk -v r="$ratio" 'BEGIN { exit !(r < 0.90) }'; then
+              echo "::error::binding regression: $m ratio $ratio < 0.90"
+              exit 1
+            fi
+          done
+          echo "no binding regression (all ratios >= 0.90)"
