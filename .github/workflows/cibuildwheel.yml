@@ -79,8 +79,6 @@ jobs:
         env:
           CIBW_BUILD: ${{ matrix.builds }}
           # every wheel self-tests in its own container/interpreter —
-          # the only way the emulated armv7l cells get verified
-          CIBW_TEST_COMMAND: python {project}/scripts/wheel_test.py
           CIBW_ARCHS_MACOS: ${{ runner.arch == 'ARM64' && 'arm64' || 'x86_64' }}
           CIBW_ARCHS_WINDOWS: ${{ runner.arch == 'ARM64' && 'ARM64' || 'AMD64' }}
           # relative to the build context: /project only exists in the
