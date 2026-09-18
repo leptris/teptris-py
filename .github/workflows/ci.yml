@@ -151,7 +151,7 @@ jobs:
               TEPTRIS_INCLUDE=/work/libteptris-src/src/include \
                 TEPTRIS_LIBDIR=/tmp/lib/src \
                 pip install --no-cache-dir .
-              python -c "import teptris; assert teptris.dumps(teptris.loads('a = 1')).strip() == 'a = 1'; print('musl binding OK')"
+              python /work/scripts/ci_musl_test.py
             '
 
   # The emulated armv7l wheels: main-push-only (emulated cibuildwheel
