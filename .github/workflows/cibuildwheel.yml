@@ -43,10 +43,11 @@ jobs:
           # has no abi3 grammar; build the minimum CPython, tag it abi3)
           - { os: ubuntu-latest,     builds: cp39-manylinux_x86_64 }
           - { os: ubuntu-latest,     builds: cp39-musllinux_x86_64 }
-          # 32-bit ARM: no runners exist; the containers run under
-          # the runner image's qemu binfmt (linux/arm/v7)
-          - { os: ubuntu-latest,     builds: cp39-manylinux_armv7l }
-          - { os: ubuntu-latest,     builds: cp39-musllinux_armv7l }
+          # 32-bit ARM: no runners exist; CIBW_ARCHS_LINUX selects the
+          # cross build and the containers run under qemu binfmt
+          # (installed below; native cells keep the auto default)
+          - { os: ubuntu-latest,     builds: cp39-manylinux_armv7l, archs: armv7l }
+          - { os: ubuntu-latest,     builds: cp39-musllinux_armv7l, archs: armv7l }
           - { os: ubuntu-24.04-arm,  builds: cp39-manylinux_aarch64 }
           - { os: ubuntu-24.04-arm,  builds: cp39-musllinux_aarch64 }
           - { os: macos-latest,      builds: cp39-macosx_arm64 }
@@ -74,11 +75,15 @@ jobs:
         shell: bash
         run: bash scripts/ci-lib-build.sh
 
+      - name: Ensure armv7 binfmt handlers
+        if: matrix.archs == 'armv7l'
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm
+
       - name: cibuildwheel
         uses: pypa/cibuildwheel@v3.0.1
         env:
           CIBW_BUILD: ${{ matrix.builds }}
-          # every wheel self-tests in its own container/interpreter —
+          CIBW_ARCHS_LINUX: ${{ matrix.archs || 'auto' }}
           CIBW_ARCHS_MACOS: ${{ runner.arch == 'ARM64' && 'arm64' || 'x86_64' }}
           CIBW_ARCHS_WINDOWS: ${{ runner.arch == 'ARM64' && 'ARM64' || 'AMD64' }}
           # relative to the build context: /project only exists in the
