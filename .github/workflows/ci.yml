@@ -106,8 +106,11 @@ jobs:
             Darwin) cp -L libteptris-src/build/src/libteptris.0.dylib src/teptris/ ;;
             Linux)  cp -L libteptris-src/build/src/libteptris.so.0 src/teptris/
                     cp -L libteptris-src/build/src/libteptris.so.0.* src/teptris/ || true ;;
-            MINGW*) cp libteptris-src/build/src/teptris.dll src/teptris/ 2>/dev/null ||
-                      cp libteptris-src/build/src/Release/teptris.dll src/teptris/ ;;
+            # ARM64 builds STATIC (ci-lib-build.sh): no DLL exists to copy
+            MINGW*) if [ "${RUNNER_ARCH:-}" != "ARM64" ]; then
+                      cp libteptris-src/build/src/teptris.dll src/teptris/ 2>/dev/null ||
+                        cp libteptris-src/build/src/Release/teptris.dll src/teptris/
+                    fi ;;
           esac
           python3 -m build --wheel --no-isolation
 
