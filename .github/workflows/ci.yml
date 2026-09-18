@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-smoke-test:
     name: ${{ matrix.os }} py${{ matrix.python-version }}
@@ -25,6 +29,8 @@ jobs:
           - { os: ubuntu-latest,    python-version: '3.9' }
           - { os: ubuntu-24.04-arm, python-version: '3.12' }
           - { os: windows-latest,   python-version: '3.12' }
+          # Windows ARM64: the win_arm64 wheel's build flavor
+          - { os: windows-11-arm,  python-version: '3.12' }
           - { os: windows-latest,   python-version: '3.9' }
     steps:
       - uses: actions/checkout@v4
