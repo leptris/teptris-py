@@ -30,6 +30,17 @@ jobs:
         with:
           python-version: '3.12'
       - run: bash scripts/make-sdist.sh
+      # self-test: install FROM the tarball and round-trip — the
+      # 0.2.15 broken-sdist class must die here, not on users
+      # (absolute paths slipped past a 3.12-only verification once)
+      - name: Self-test the sdist (3.9, strict)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      - run: |
+          python3 -m pip install -q virtualenv
+          python3 -m virtualenv /tmp/sdt && /tmp/sdt/bin/python -m pip install -q dist/*.tar.gz
+          /tmp/sdt/bin/python -c "import teptris; assert teptris.loads('a = 1') == {'a': 1}; print('sdist self-test OK')"
       - uses: actions/upload-artifact@v4
         with:
           name: sdist
