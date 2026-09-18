@@ -8,11 +8,12 @@ from setuptools import setup, Extension
 # interpreter's compiler — no cmake, no prebuilt archive. Precedence
 # over the archive path so a coincidental sibling teptris checkout
 # can never hijack an sdist install.
-_vendor = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "vendor", "libteptris")
+# RELATIVE paths only: setuptools' manifest check rejects absolute
+# source paths when older setuptools builds the sdist (seen with the
+# 3.9-era resolution; setup.py always runs from the project root).
 _engine_src = sorted(
-    glob.glob(os.path.join(_vendor, "src", "teptris", "**", "*.c"),
-              recursive=True))
+    glob.glob(os.path.join("vendor", "libteptris", "src", "teptris",
+                           "**", "*.c"), recursive=True))
 
 inc = os.environ.get("TEPTRIS_INCLUDE", "../teptris/src/include")
 libdir = os.environ.get("TEPTRIS_LIBDIR", "../teptris/build-shared/src")
@@ -28,8 +29,8 @@ if _engine_src:
     ext = Extension(
         "teptris._native",
         sources=["src/teptris/_native.c"] + _engine_src,
-        include_dirs=[os.path.join(_vendor, "src"),
-                      os.path.join(_vendor, "src", "include")],
+        include_dirs=["vendor/libteptris/src",
+                      "vendor/libteptris/src/include"],
         py_limited_api=True,
     )
 elif os.path.exists(_archive):
