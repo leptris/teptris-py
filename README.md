@@ -16,12 +16,19 @@ competitor on every shape.
 
 ## Packaging
 
-Wheels are `cp39-abi3` — one per platform (manylinux/musllinux x86_64
-and aarch64, macOS arm64 and x86_64, Windows AMD64 and ARM64), covering
-every CPython >= 3.9 including future minors. The extension statically
-links `libteptris`, so each wheel is a single self-contained module
-(no shared-library chain). Linux wheels build the engine inside each
-container via cibuildwheel so musllinux links musl.
+`pip install teptris` resolves one of 8 `cp39-abi3` wheels —
+manylinux/musllinux x86_64 and aarch64, macOS arm64 and x86_64,
+Windows AMD64 and ARM64 — covering every CPython >= 3.9 including
+future minors. The extension statically links `libteptris`, so each
+wheel is a single self-contained module (no shared-library chain).
+Linux wheels build the engine inside each container via cibuildwheel
+so musllinux links musl; the manylinux wheels carry the maximal tag
+set (glibc >= 2.17).
+
+Every other platform (FreeBSD, Solaris/illumos, any CPython on an
+exotic arch) installs the sdist, which vendors the engine and
+compiles it with the installing interpreter's compiler — a C compiler
+is required, and the build fails loudly without one.
 
 ## Development
 
