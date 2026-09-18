@@ -104,3 +104,14 @@ jobs:
       - name: Unit tests
         shell: bash
         run: python3 -m unittest discover -s tests -v 2>&1 | tail -3
+  # workflow-file linter: catches duplicate-key/schema breakage that
+  # PyYAML tolerates and GitHub only surfaces as placeholder runs
+  # (#54/#56 incident)
+  lint-workflows:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color
