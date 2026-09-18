@@ -15,6 +15,22 @@ permissions:
   contents: read
 
 jobs:
+  # Source distribution: the engine is vendored and compiles at
+  # pip-install time (setup.py vendored mode) — every platform with a
+  # C compiler, including the ones no wheel covers.
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: bash scripts/make-sdist.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
   wheels:
     name: ${{ matrix.builds }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
