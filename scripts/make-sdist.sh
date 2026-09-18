@@ -15,4 +15,5 @@ curl -sL "https://api.github.com/repos/leptris/teptris/tarball/${C_TAG}" \
 mkdir -p vendor/libteptris
 cp -R .sdist-tmp/src vendor/libteptris/src
 cp .sdist-tmp/LICENSE.md vendor/libteptris/LICENSE.md
+python3 -m pip install --quiet --upgrade build
 python3 -m build --sdist
