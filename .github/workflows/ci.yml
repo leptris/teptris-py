@@ -66,8 +66,15 @@ jobs:
 
       # mirrors release-wheels.yml: vcvars, /GENPROFILE train, pgomgr
       # merge, /USEPROFILE relink — the chain windows wheels ship with
+      # arm64-windows: the canonical static builder (vcvars arm64 via
+      # RUNNER_ARCH; static archive — no DLL to chase)
+      - name: C library static build (Windows ARM64, MSVC)
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        shell: bash
+        run: bash scripts/ci-lib-build.sh
+
       - name: C library PGO train (Windows x64, MSVC)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
@@ -80,7 +87,7 @@ jobs:
           pgomgr /merge libteptris-src\build\cli\*.pgc libteptris-src\build\src\teptris.pgd
 
       - name: C library PGO use (Windows x64, MSVC)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
