@@ -43,6 +43,10 @@ jobs:
           # has no abi3 grammar; build the minimum CPython, tag it abi3)
           - { os: ubuntu-latest,     builds: cp39-manylinux_x86_64 }
           - { os: ubuntu-latest,     builds: cp39-musllinux_x86_64 }
+          # 32-bit ARM: no runners exist; the containers run under
+          # the runner image's qemu binfmt (linux/arm/v7)
+          - { os: ubuntu-latest,     builds: cp39-manylinux_armv7l }
+          - { os: ubuntu-latest,     builds: cp39-musllinux_armv7l }
           - { os: ubuntu-24.04-arm,  builds: cp39-manylinux_aarch64 }
           - { os: ubuntu-24.04-arm,  builds: cp39-musllinux_aarch64 }
           - { os: macos-latest,      builds: cp39-macosx_arm64 }
@@ -74,6 +78,9 @@ jobs:
         uses: pypa/cibuildwheel@v3.0.1
         env:
           CIBW_BUILD: ${{ matrix.builds }}
+          # every wheel self-tests in its own container/interpreter —
+          # the only way the emulated armv7l cells get verified
+          CIBW_TEST_COMMAND: python {project}/scripts/wheel_test.py
           CIBW_ARCHS_MACOS: ${{ runner.arch == 'ARM64' && 'arm64' || 'x86_64' }}
           CIBW_ARCHS_WINDOWS: ${{ runner.arch == 'ARM64' && 'ARM64' || 'AMD64' }}
           # relative to the build context: /project only exists in the
