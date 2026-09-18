@@ -140,12 +140,17 @@ static PyObject *ext_load(PyObject *self, PyObject *args) {
     teptris_status st = teptris_parse(data, (size_t)len, NULL, &doc);
     Py_XDECREF(keepalive);
     if (st != TEPTRIS_OK) {
+        /* e points into the document's memory: read everything needed
+         * BEFORE teptris_document_free — the allocations between here
+         * and the attribute writes can reuse the freed block (py3.9's
+         * allocator surfaced this as line=0; 3.12 masked it) */
         const teptris_error *e = teptris_document_error(doc);
+        size_t line = e->line, column = e->column;
         PyObject *ex = PyObject_CallFunction(TomlDecodeError, "s", e->message);
         teptris_document_free(doc);
         if (ex) {
-            PyObject_SetAttrString(ex, "line", PyLong_FromSize_t(e->line));
-            PyObject_SetAttrString(ex, "column", PyLong_FromSize_t(e->column));
+            PyObject_SetAttrString(ex, "line", PyLong_FromSize_t(line));
+            PyObject_SetAttrString(ex, "column", PyLong_FromSize_t(column));
             PyErr_SetObject(TomlDecodeError, ex);
         }
         return NULL;
