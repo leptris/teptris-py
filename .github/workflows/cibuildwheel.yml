@@ -84,7 +84,7 @@ jobs:
 
       - name: Ensure binfmt handlers for the emulated arches
         if: matrix.archs
-        run: docker run --privileged --rm tonistiigi/binfmt --install arm ppc64le s390x
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm,ppc64le,s390x
 
       - name: cibuildwheel
         uses: pypa/cibuildwheel@v3.0.1
