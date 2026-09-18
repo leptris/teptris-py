@@ -42,7 +42,7 @@ jobs:
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
           # Lockstep pin: the binding rides the C core tag below; bump
           # this pin when the C tag moves.
-          echo "C_TAG=v0.1.22" >> "$GITHUB_ENV"
+          echo "C_TAG=v0.1.23" >> "$GITHUB_ENV"
           echo "PY_VERSION=${VERSION}" >> "$GITHUB_ENV"
 
       - name: Checkout libteptris (the C core, at the tag)
@@ -177,7 +177,7 @@ jobs:
         with:
           repository: leptris/teptris
           path: libteptris-src
-          ref: v0.1.22
+          ref: v0.1.23
 
       # Musl builds in an Alpine container (JS actions stay on the host);
       # the smoke test runs inside the container — a glibc host python
