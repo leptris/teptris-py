@@ -109,11 +109,15 @@ jobs:
           CIBW_ENVIRONMENT: >-
             TEPTRIS_INCLUDE=libteptris-src/src/include
             TEPTRIS_LIBDIR=libteptris-src/build/src
+          # cp/rm/mv ONLY: the Windows cells run this through cmd,
+          # where mkdir -p does not exist (proven the hard way). The
+          # second cp nests src/ inside the first copy's directory;
+          # the duplicated top-level entries match no package-data
+          # glob and never reach the wheel.
           CIBW_BEFORE_BUILD: >-
             rm -rf src/teptris/_engine &&
-            mkdir -p src/teptris/_engine/src &&
-            cp -r libteptris-src/src/teptris src/teptris/_engine/src/teptris &&
-            cp -r libteptris-src/src/include src/teptris/_engine/src/include &&
+            cp -r libteptris-src/src src/teptris/_engine &&
+            cp -r libteptris-src/src src/teptris/_engine/src &&
             cp libteptris-src/LICENSE.md src/teptris/_engine/LICENSE.md
           CIBW_BEFORE_ALL_LINUX: >-
             set -eux;
