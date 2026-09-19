@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "teptris"
-version = "0.2.20"
+version = "0.2.19"
 description = "TOML for Python at libteptris speed (native C extension, no fallback)"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -15,5 +15,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 teptris = ["_platform/**/*", "*.so", "*.so.*", "*.dylib", "*.dylib.*", "*.dll",
-           "_engine/src/teptris/**/*.c", "_engine/src/teptris/**/*.h",
-           "_engine/src/include/teptris/*.h", "_engine/LICENSE.md"]
+           "_engine/LICENSE.md",
+           "_engine/src/teptris/*.c", "_engine/src/teptris/*/*.c", "_engine/src/teptris/*/*/*.c",
+           "_engine/src/teptris/*.h", "_engine/src/teptris/*/*.h", "_engine/src/teptris/*/*/*.h",
+           "_engine/src/include/teptris/*.h"]
