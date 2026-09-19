@@ -14,4 +14,6 @@ license = { text = "MIT" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-teptris = ["_platform/**/*", "*.so", "*.so.*", "*.dylib", "*.dylib.*", "*.dll"]
+teptris = ["_platform/**/*", "*.so", "*.so.*", "*.dylib", "*.dylib.*", "*.dll",
+           "_engine/src/teptris/**/*.c", "_engine/src/teptris/**/*.h",
+           "_engine/src/include/teptris/*.h", "_engine/LICENSE.md"]
