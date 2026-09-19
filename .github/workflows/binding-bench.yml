@@ -51,6 +51,7 @@ jobs:
       - name: Install HEAD into venv A
         run: |
           python3 -m venv /tmp/head
+          /tmp/head/bin/pip install -q "setuptools>=61" wheel
           TEPTRIS_INCLUDE="$PWD/libteptris-src/src/include" \
             TEPTRIS_LIBDIR="$PWD/libteptris-src/build/src" \
             /tmp/head/bin/pip install -q --no-build-isolation .
