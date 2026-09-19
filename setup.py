@@ -65,12 +65,10 @@ else:
 # (which the wheel workflow runs) doesn't apply the pyproject
 # src-layout on older setuptools (3.8 cells resolved one), and then
 # the inplace copy targets teptris/ instead of src/teptris/.
-# The engine SOURCE rides inside every wheel as inert package data
-# (teptris/_engine/) — the recompile path for users who want to
-# rebuild the ext against their own environment. Populated by
-# CIBW_BEFORE_BUILD from the pinned libteptris checkout.
+# NOTE: package_data lives in pyproject.toml ([tool.setuptools.
+# package-data]) — when both exist, the pyproject table WINS over
+# this dict (the 0.2.19 lesson: engine sources silently absent).
+# The engine source rides inside every wheel at teptris/_engine/
+# (populated by CIBW_BEFORE_BUILD; the recompile path).
 setup(ext_modules=[ext], package_dir={"": "src"},
-      package_data={"teptris": ["_engine/src/teptris/**/*.c",
-                                "_engine/src/include/teptris/*.h",
-                                "_engine/LICENSE.md"]},
       options={"bdist_wheel": {"py_limited_api": "cp39"}})
