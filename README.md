@@ -25,6 +25,11 @@ Linux wheels build the engine inside each container via cibuildwheel
 so musllinux links musl; the manylinux wheels carry the maximal tag
 set (glibc >= 2.17).
 
+Every wheel also carries the engine C SOURCE at `teptris/_engine`
+(beside the compiled extension) — the recompile path for rebuilding
+against your own environment. The sdist vendors the same tree and
+compiles automatically at install.
+
 Every other platform (FreeBSD, Solaris/illumos, any CPython on an
 exotic arch) installs the sdist, which vendors the engine and
 compiles it with the installing interpreter's compiler — a C compiler
