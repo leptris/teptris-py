@@ -206,6 +206,7 @@ jobs:
             -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF
             -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            && cmake --build libteptris-src/build -j
           CIBW_TEST_COMMAND: >-
             python -c "import teptris; assert teptris.loads('a = 1') == {'a': 1};
             print('armv7l wheel OK')"
