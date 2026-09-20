@@ -165,6 +165,32 @@ jobs:
         with:
           files: dist/final/*.whl
 
+  verify-doctrine:
+    needs: [wheel, wheel-musl]
+    if: always() && !cancelled() && !failure()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: artifacts
+          merge-multiple: true
+      - name: Verify the doctrine halves in every artifact
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          wheels = glob.glob("artifacts/*.whl")
+          assert wheels, "no wheel artifacts"
+          for w in wheels:
+              names = zipfile.ZipFile(w).namelist()
+              binary = [n for n in names if "_native" in n and (n.endswith(".so") or n.endswith(".pyd") or n.endswith(".dylib"))]
+              sources = [n for n in names if n.startswith("teptris/_engine/src/") and (n.endswith(".c") or n.endswith(".h"))]
+              assert binary, f"{w}: no compiled engine binary"
+              assert len(sources) >= 20, f"{w}: only {len(sources)} engine sources"
+              assert "teptris/_engine/LICENSE.md" in names, f"{w}: engine LICENSE missing"
+              print(f"doctrine OK {w}: {len(sources)} sources + {binary[0]}")
+          PY
+
   wheel-musl:
     name: Wheel (musl) on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
