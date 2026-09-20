@@ -46,6 +46,50 @@ jobs:
           name: sdist
           path: dist/*.tar.gz
 
+  # Packaging-doctrine gate (teptris-py#77): the delivery channel is
+  # manual twine from these artifacts, so the run must only be green
+  # when EVERY wheel carries the compiled binary AND the vendored
+  # engine source, and the sdist carries the source tree that
+  # compiles at install. Publish anything that fails this and the
+  # doctrine regressed silently.
+  verify-doctrine:
+    needs: [sdist, wheels]
+    if: always() && !cancelled() && !failure()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: artifacts
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: artifacts
+      - name: Verify the doctrine halves in every artifact
+        run: |
+          python - <<'PY'
+          import glob, tarfile, zipfile
+          wheels = glob.glob("artifacts/*.whl")
+          assert wheels, "no wheel artifacts"
+          for w in wheels:
+              names = zipfile.ZipFile(w).namelist()
+              binary = [n for n in names if "_native" in n and (n.endswith(".so") or n.endswith(".pyd") or n.endswith(".dylib"))]
+              sources = [n for n in names if n.startswith("teptris/_engine/src/") and (n.endswith(".c") or n.endswith(".h"))]
+              assert binary, f"{w}: no compiled engine binary"
+              assert len(sources) >= 20, f"{w}: only {len(sources)} engine sources"
+              assert "teptris/_engine/LICENSE.md" in names, f"{w}: engine LICENSE missing"
+              print(f"doctrine OK {w}: {len(sources)} sources + {binary[0]}")
+          sdists = glob.glob("artifacts/*.tar.gz")
+          assert sdists, "no sdist artifact"
+          with tarfile.open(sdists[0]) as t:
+              names = t.getnames()
+          sources = [n for n in names if "/vendor/libteptris/src/" in n and (n.endswith(".c") or n.endswith(".h"))]
+          assert len(sources) >= 20, f"{sdists[0]}: only {len(sources)} engine sources"
+          assert any(n.endswith("setup.py") for n in names), "setup.py missing from sdist"
+          print(f"doctrine OK {sdists[0]}: {len(sources)} sources")
+          PY
+
   wheels:
     name: ${{ matrix.builds }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
