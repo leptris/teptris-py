@@ -125,7 +125,7 @@ jobs:
 
       - name: Unit tests
         shell: bash
-        run: python3 -m unittest discover -s tests -v 2>&1 | tail -3
+        run: python3 -m unittest discover -s tests -v 2>&1 | tail -60
   # workflow-file linter: catches duplicate-key/schema breakage that
   # PyYAML tolerates and GitHub only surfaces as placeholder runs
   # (#54/#56 incident)
