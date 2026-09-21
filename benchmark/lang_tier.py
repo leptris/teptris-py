@@ -66,4 +66,4 @@ for path in sorted(corpus.glob("*.toml")):
             cells.append(f"{name} {ms:7.2f} ms {len(src) / 1048576 / (ms / 1000):6.1f} MB/s")
         except Exception as e:  # noqa: BLE001
             cells.append(f"{name} ERROR: {str(e)[:50]}")
-    print(f"{path.name:<20} {cells[0]} | {cells[1]}")
+    print(f"{path.name:<20} " + " | ".join(cells))
