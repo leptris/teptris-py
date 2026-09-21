@@ -57,6 +57,37 @@ exotic arch) installs the sdist, which vendors the engine and
 compiles it with the installing interpreter's compiler — a C compiler
 is required, and the build fails loudly without one.
 
+## Lazy load (`loads_lazy`)
+
+When most of the parsed tree is going to be ignored, `loads_lazy`
+returns a `LazyNode` wrapper that materializes host objects only along
+the paths actually accessed:
+
+```python
+doc = teptris.loads_lazy(big_toml)
+# one parse, no dicts/lists materialized yet
+sku = doc["items"][0]["sku"].value()   # walks the path; scalars
+                                       # materialize at .value()
+rest = doc["items"]                    # returns a LazyNode for the array
+for it in rest:
+    print(it["sku"].value())
+# flatten eagerly if you want the same dict-tree shape as loads()
+flat = doc.to_dict()
+```
+
+`LazyNode` exposes `kind()` ('table' | 'array' | 'scalar'), `value()`
+(scalars only — errors on containers), `len()` (containers), iteration
+(tables yield `(key, LazyNode)` pairs; arrays yield `LazyNode`s),
+`[]` (table key or array index — `None` for absent), and `to_dict()` /
+`to_list()` for eager flattening. Datetime values materialize via the
+same `datetime.datetime` / `date` / `time` contract as `loads()`. The
+document and the borrowed-bytes input are kept alive by the wrapper
+until GC.
+
+Same datetime contract as `loads()`. The eager path is the floor for
+"flatten everything" workloads; the lazy path is the win for "parse
+once, touch a small subset."
+
 ## Development
 
 `setup.py` links the engine statically when it finds
