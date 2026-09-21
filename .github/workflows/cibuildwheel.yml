@@ -10,6 +10,12 @@ on:
   workflow_dispatch:
   push:
     tags: ["v*"]
+  # a PR that touches the release machinery rehearses the full
+  # wheel + sdist + doctrine matrix - release-only breakage (the
+  # ruby 0.2.42 class) surfaces in the PR instead of the tag build
+  pull_request:
+    paths:
+      - ".github/workflows/cibuildwheel.yml"
 
 permissions:
   contents: read
