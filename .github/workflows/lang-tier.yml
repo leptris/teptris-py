@@ -36,6 +36,11 @@ jobs:
       - name: Build the extension in place
         run: |
           python3 -m pip install -q cmake ninja
+          cmake -S libteptris-src -B libteptris-src/build \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF \
+            -DTEPTRIS_BUILD_STATIC=ON
+          cmake --build libteptris-src/build -j
           TEPTRIS_INCLUDE="$PWD/libteptris-src/src/include" \
             TEPTRIS_LIBDIR="$PWD/libteptris-src/build/src" \
             python3 -m pip install -q -e .
