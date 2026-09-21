@@ -170,6 +170,116 @@ static PyObject *ext_load(PyObject *self, PyObject *args) {
     return out;
 }
 
+/* -------------------------------------------------------------- batch -- *
+ * loads_batch (#108 ask 3, the py twin of teptris-ruby's load_batch):
+ * N documents through ONE teptris_parse_batch call. The caller's list
+ * is read-only and its bytes objects stay referenced for the duration
+ * of the call; scratch is one combined allocation. The first failing
+ * document raises DecodeError with its line/column (all docs are
+ * freed on that path). */
+
+static PyObject *ext_loads_batch(PyObject *self, PyObject *docs) {
+    (void)self;
+    if (!PyList_Check(docs)) {
+        PyErr_SetString(PyExc_TypeError, "loads_batch() expects a list");
+        return NULL;
+    }
+    Py_ssize_t n = PyList_Size(docs);
+    if (n == 0) return PyList_New(0);
+    /* one combined scratch blob: data ptrs, lens, doc ptrs, statuses */
+    size_t blob = (size_t)n * (sizeof(const char *) + sizeof(size_t) +
+                               sizeof(teptris_document *) +
+                               sizeof(teptris_status));
+    char *scratch = (char *)PyMem_Malloc(blob);
+    if (!scratch) return PyErr_NoMemory();
+    const char **data = (const char **)scratch;
+    size_t *lens = (size_t *)(scratch + (size_t)n * sizeof(const char *));
+    teptris_document **docs_out =
+        (teptris_document **)(scratch + (size_t)n * (sizeof(const char *) +
+                                                    sizeof(size_t)));
+    teptris_status *statuses =
+        (teptris_status *)(scratch + (size_t)n *
+                                       (sizeof(const char *) + sizeof(size_t) +
+                                        sizeof(teptris_document *)));
+    PyObject *bytes_list = PyList_New((Py_ssize_t)n);
+    if (!bytes_list) { PyMem_Free(scratch); return NULL; }
+    for (Py_ssize_t i = 0; i < n; i++) {
+        PyObject *item = PyList_GetItem(docs, i); /* borrowed */
+        PyObject *bytes;
+        if (PyUnicode_Check(item)) {
+            bytes = PyUnicode_AsUTF8String(item);
+            if (!bytes) {
+                Py_DECREF(bytes_list);
+                PyMem_Free(scratch);
+                return NULL;
+            }
+        } else if (PyBytes_Check(item)) {
+            bytes = item;
+            Py_INCREF(bytes);
+        } else {
+            Py_DECREF(bytes_list);
+            PyMem_Free(scratch);
+            PyErr_SetString(PyExc_TypeError,
+                            "loads_batch() expects str or bytes entries");
+            return NULL;
+        }
+        if (PyList_SetItem(bytes_list, i, bytes) < 0) { /* steals */ PyMem_Free(scratch); return NULL; }
+        data[i] = PyBytes_AsString(bytes);
+        lens[i] = (size_t)PyBytes_Size(bytes);
+    }
+    teptris_status batch =
+        teptris_parse_batch(data, lens, (size_t)n, NULL, docs_out, statuses);
+    if (batch != TEPTRIS_OK) {
+        Py_DECREF(bytes_list);
+        PyMem_Free(scratch);
+        if (batch == TEPTRIS_ERR_ALLOC) return PyErr_NoMemory();
+        PyErr_SetString(PyExc_RuntimeError, "batch parse failed");
+        return NULL;
+    }
+    Py_ssize_t first_fail = -1;
+    for (Py_ssize_t i = 0; i < n; i++) {
+        if (statuses[i] != TEPTRIS_OK && first_fail == -1) first_fail = i;
+    }
+    if (first_fail != -1) {
+        const teptris_error *e = teptris_document_error(docs_out[first_fail]);
+        size_t line = e->line, column = e->column;
+        PyObject *ex =
+            PyObject_CallFunction(TomlDecodeError, "s", e->message);
+        for (Py_ssize_t i = 0; i < n; i++) teptris_document_free(docs_out[i]);
+        Py_DECREF(bytes_list);
+        PyMem_Free(scratch);
+        if (ex) {
+            PyObject_SetAttrString(ex, "line", PyLong_FromSize_t(line));
+            PyObject_SetAttrString(ex, "column", PyLong_FromSize_t(column));
+            PyErr_SetObject(TomlDecodeError, ex);
+        }
+        return NULL;
+    }
+    PyObject *out = PyList_New((Py_ssize_t)n);
+    if (!out) {
+        for (Py_ssize_t i = 0; i < n; i++) teptris_document_free(docs_out[i]);
+        Py_DECREF(bytes_list);
+        PyMem_Free(scratch);
+        return NULL;
+    }
+    for (Py_ssize_t i = 0; i < n; i++) {
+        PyObject *obj = obj_from_node(teptris_document_root(docs_out[i]));
+        teptris_document_free(docs_out[i]);
+        if (!obj || PyList_SetItem(out, i, obj) < 0) {
+            /* SetItem steals on success; on failure obj is ours to
+             * drop and the bail path frees the rest. */
+            Py_XDECREF(obj);
+            Py_DECREF(out);
+            Py_DECREF(bytes_list);
+            PyMem_Free(scratch);
+            return NULL;
+        }
+    }
+    Py_DECREF(bytes_list);
+    PyMem_Free(scratch);
+    return out;
+}
+
 /* --------------------------------------------------------------- lazy -- *
  * LazyNode (#79, Python twin of teptris-ruby's LazyValue): one
  * parse, host objects materialize along the paths actually accessed.
@@ -664,6 +774,8 @@ static PyObject *ext_dumps(PyObject *self, PyObject *args) {
 
 static PyMethodDef methods[] = {
     {"loads", ext_load, METH_VARARGS, "Parse TOML into Python objects."},
+    {"loads_batch", ext_loads_batch, METH_O,
+     "Parse a list of TOML documents in one C call."},
     {"loads_lazy", ext_lazy_load, METH_VARARGS,
      "Parse TOML into a LazyNode; host objects materialize on access."},
     {"dumps", ext_dumps, METH_VARARGS,
