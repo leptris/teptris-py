@@ -1,7 +1,9 @@
 import datetime as dt
+import sys
 import unittest
 
-import teptris
+sys.path.insert(0, "src")
+import teptris  # noqa: E402
 
 
 class LoadsLazy(unittest.TestCase):
