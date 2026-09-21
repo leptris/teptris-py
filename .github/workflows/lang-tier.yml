@@ -27,7 +27,7 @@ jobs:
         with:
           repository: leptris/teptris
           path: libteptris-src
-          ref: v0.1.24
+          ref: v0.1.26
 
       - uses: actions/setup-python@v5
         with:
