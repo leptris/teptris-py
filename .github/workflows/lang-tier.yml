@@ -1,0 +1,50 @@
+# The end-to-end Python tier (issue #81): teptris vs the Python TOML
+# libraries users actually choose between - tomllib/tomli, tomlkit,
+# rtoml. Informational, not a gate - competitor versions drift by
+# design; the numbers feed the README's performance section. Run on
+# every main push so they track releases.
+name: lang-tier
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lang-tier-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  py-vs-tomllib-tomlkit-rtoml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: leptris/teptris
+          path: libteptris-src
+          ref: v0.1.24
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the extension in place
+        run: |
+          python3 -m pip install -q cmake ninja
+          TEPTRIS_INCLUDE="$PWD/libteptris-src/src/include" \
+            TEPTRIS_LIBDIR="$PWD/libteptris-src/build/src" \
+            python3 -m pip install -q -e .
+
+      - name: Generate the corpus
+        run: python3 libteptris-src/scripts/gen_bench_corpus.py corpus
+
+      - name: Install the competitors
+        run: python3 -m pip install -q tomli tomlkit rtoml
+
+      - name: Bench teptris vs tomllib/tomlkit/rtoml
+        run: python3 benchmark/lang_tier.py corpus 12
