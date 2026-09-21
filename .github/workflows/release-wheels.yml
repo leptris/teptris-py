@@ -46,7 +46,7 @@ jobs:
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
           # Lockstep pin: the binding rides the C core tag below; bump
           # this pin when the C tag moves.
-          echo "C_TAG=v0.1.24" >> "$GITHUB_ENV"
+          echo "C_TAG=v0.1.25" >> "$GITHUB_ENV"
           echo "PY_VERSION=${VERSION}" >> "$GITHUB_ENV"
 
       - name: Checkout libteptris (the C core, at the tag)
