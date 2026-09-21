@@ -14,6 +14,28 @@ implements the TOML 1.1 draft grammar (a strict superset of 1.0)
 with 100% toml-test conformance, and parses at ≥3× the best C/C++
 competitor on every shape.
 
+## Performance (end-to-end, Python tier)
+
+Best-of-12 runs on a GitHub ubuntu-latest runner (python 3.12),
+2026-09-21, over the generated bench corpus (~700 KB per shape). The
+full per-shape table regenerates on every main push via the
+`lang-tier` lane.
+
+| Shape | teptris | tomllib (stdlib) | tomlkit (pure) | rtoml (rust) |
+| --- | --- | --- | --- | --- |
+| array_heavy | 6.8 ms / 107 MB/s | 236 ms / 3.1 MB/s | 1,740 ms / 0.4 MB/s | 34 ms / 21 MB/s |
+| cargo_like | 3.8 ms / 94 MB/s | 100 ms / 3.5 MB/s | 1,074 ms / 0.3 MB/s | 18 ms / 20 MB/s |
+| datetime_heavy | 26.1 ms / 41 MB/s | 227 ms / 4.8 MB/s | 1,680 ms / 0.6 MB/s | 40 ms / 27 MB/s |
+| deep_tables | 2.2 ms / 109 MB/s | 82 ms / 3.0 MB/s | 14,713 ms / 0.0 MB/s | 13 ms / 18 MB/s |
+| mixed | 5.5 ms / 80 MB/s | 150 ms / 2.9 MB/s | 1,385 ms / 0.3 MB/s | 27 ms / 16 MB/s |
+| scalar_float | 12.7 ms / 115 MB/s | 310 ms / 4.7 MB/s | 2,243 ms / 0.7 MB/s | 61 ms / 24 MB/s |
+| scalar_int | 11.8 ms / 108 MB/s | 300 ms / 4.3 MB/s | 2,038 ms / 0.6 MB/s | 54 ms / 24 MB/s |
+
+End to end (parse + materialize into Python objects): **4.8-6x rtoml**
+(the rust-backed incumbent), **19-42x the stdlib's tomllib**, and
+**hundreds of times tomlkit** per shape. rtoml numbers include its
+own object construction; both libraries materialize fully.
+
 ## Packaging
 
 `pip install teptris` resolves one of 10 `cp39-abi3` wheels —
