@@ -57,6 +57,23 @@ exotic arch) installs the sdist, which vendors the engine and
 compiles it with the installing interpreter's compiler — a C compiler
 is required, and the build fails loudly without one.
 
+## Many-small batch (`loads_batch`)
+
+Parse a list of TOML documents in ONE C call (`teptris_parse_batch`):
+
+```python
+docs = teptris.loads_batch([toml_str_a, toml_str_b, toml_str_c])
+# => [dict, dict, dict] — same datetime contract as loads()
+```
+
+The first failing document raises `TOMLDecodeError` carrying its
+line/column. **Honest perf shape** (benchmark/batch_tier.py): per-doc
+`loads` in a tight loop is faster on every measured shape (6.3x on
+2000 tiny docs, 3.2x medium, 1.3x large — CPython's per-call overhead
+amortizes better than the batch's scratch + object pressure). Use
+`loads_batch` for the single API surface, one C crossing, and the
+per-doc error report — not for speed.
+
 ## Lazy load (`loads_lazy`)
 
 When most of the parsed tree is going to be ignored, `loads_lazy`
