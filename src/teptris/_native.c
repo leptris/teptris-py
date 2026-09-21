@@ -1,3 +1,13 @@
+/* teptris._native — TOML 1.1 parser/writer binding (Python C API).
+
+Eager path: `loads(data)` parses TOML into nested dict/list/leaf objects.
+Lazy path: `loads_lazy(data)` returns a `LazyNode` wrapping the parsed
+tree — host objects materialize only on access (`[]` for tables/arrays,
+`value()` for scalars, `to_dict()` / `to_list()` to flatten).
+
+The C ABI for both paths lives in libteptris (`teptris/teptris.h`). The
+lazy twin avoids materializing the intermediate dict/list for the many
+shape where only a small subset of the tree is touched (teptris#79). */
 #define PY_SSIZE_T_CLEAN
 #ifndef Py_LIMITED_API
 /* abi3 (#20): the datetime C-API is not in the limited API, so all
@@ -160,6 +170,304 @@ static PyObject *ext_load(PyObject *self, PyObject *args) {
     return out;
 }
 
+/* --------------------------------------------------------------- lazy -- *
+ * LazyNode (#79, Python twin of teptris-ruby's LazyValue): one
+ * parse, host objects materialize along the paths actually accessed.
+ *
+ * Lifetime: every wrapper holds a strong ref to a `LazyOwner` that
+ * owns the parsed document + the borrowed-bytes copy. `LazyNode` is
+ * GC-tracked (tp_traverse) so the cycle collector breaks the
+ * wrapper → owner edge if the user drops the only outer reference. */
+
+typedef struct {
+    PyObject_HEAD
+    PyObject *owner;
+    const teptris_node *node;
+} LazyNode;
+
+typedef struct {
+    PyObject_HEAD
+    teptris_document *doc;
+    PyObject *input;
+} LazyOwner;
+
+static PyTypeObject *LazyNodeType = NULL, *LazyOwnerType = NULL;
+
+static void lazy_node_dealloc(PyObject *self) {
+    PyObject_GC_UnTrack(self);
+    Py_XDECREF(((LazyNode *)self)->owner);
+    PyObject_GC_Del(self);
+}
+
+static int lazy_node_traverse(PyObject *self, visitproc visit, void *arg) {
+    Py_VISIT(((LazyNode *)self)->owner);
+    return 0;
+}
+
+static int lazy_node_clear(PyObject *self) {
+    Py_CLEAR(((LazyNode *)self)->owner);
+    return 0;
+}
+
+static void lazy_owner_dealloc(PyObject *self) {
+    LazyOwner *o = (LazyOwner *)self;
+    if (o->doc != NULL) teptris_document_free(o->doc);
+    Py_XDECREF(o->input);
+    PyObject_GC_Del(self);
+}
+
+static int lazy_owner_traverse(PyObject *self, visitproc visit, void *arg) {
+    Py_VISIT(((LazyOwner *)self)->input);
+    return 0;
+}
+
+static int lazy_owner_clear(PyObject *self) {
+    Py_CLEAR(((LazyOwner *)self)->input);
+    return 0;
+}
+
+static PyObject *lazy_wrap(LazyOwner *owner, const teptris_node *n) {
+    LazyNode *self = PyObject_GC_New(LazyNode, LazyNodeType);
+    if (self == NULL) return NULL;
+    Py_INCREF(owner);
+    self->owner = (PyObject *)owner;
+    self->node = n;
+    PyObject_GC_Track(self);
+    return (PyObject *)self;
+}
+
+static PyObject *lazy_kind(PyObject *self, PyObject *Py_UNUSED(ignored)) {
+    PyObject *out;
+    switch (teptris_node_kind(((LazyNode *)self)->node)) {
+    case TEPTRIS_TABLE: out = PyUnicode_FromString("table"); break;
+    case TEPTRIS_ARRAY: out = PyUnicode_FromString("array"); break;
+    default: out = PyUnicode_FromString("scalar"); break;
+    }
+    return out;
+}
+
+static Py_ssize_t lazy_len_sq(PyObject *self) {
+    const teptris_node *n = ((LazyNode *)self)->node;
+    switch (teptris_node_kind(n)) {
+    case TEPTRIS_TABLE:
+        return (Py_ssize_t)teptris_node_table_length(n);
+    case TEPTRIS_ARRAY:
+        return (Py_ssize_t)teptris_node_array_length(n);
+    default:
+        PyErr_SetString(PyExc_TypeError, "scalar has no len()");
+        return -1;
+    }
+}
+
+static PyObject *lazy_value(PyObject *self, PyObject *Py_UNUSED(ignored)) {
+    teptris_kind k = teptris_node_kind(((LazyNode *)self)->node);
+    switch (k) {
+    case TEPTRIS_TABLE:
+    case TEPTRIS_ARRAY:
+        PyErr_SetString(PyExc_TypeError,
+                        "value() only on scalars; use [] for containers");
+        return NULL;
+    default:
+        return obj_from_node(((LazyNode *)self)->node);
+    }
+}
+
+static PyObject *lazy_subscript(PyObject *self, PyObject *key) {
+    LazyNode *self_n = (LazyNode *)self;
+    const teptris_node *n = self_n->node;
+    const teptris_node *child = NULL;
+    switch (teptris_node_kind(n)) {
+    case TEPTRIS_TABLE: {
+        if (!PyUnicode_Check(key)) {
+            PyErr_SetString(PyExc_TypeError, "table key must be str");
+            return NULL;
+        }
+        /* PyUnicode_AsUTF8AndSize is 3.10+; stay compatible with the
+         * 3.9 stable ABI by going through bytes. */
+        PyObject *kb = PyUnicode_AsUTF8String(key);
+        if (kb == NULL) return NULL;
+        const char *k = PyBytes_AsString(kb);
+        Py_ssize_t kl = PyBytes_Size(kb);
+        child = teptris_node_table_get(n, k, (size_t)kl);
+        Py_DECREF(kb);
+        break;
+    }
+    case TEPTRIS_ARRAY: {
+        Py_ssize_t len = (Py_ssize_t)teptris_node_array_length(n);
+        Py_ssize_t i = PyNumber_AsSsize_t(key, PyExc_IndexError);
+        if (i == -1 && PyErr_Occurred()) return NULL;
+        if (i < 0) i += len;
+        if (i < 0 || i >= len) {
+            PyErr_SetString(PyExc_IndexError, "array index out of range");
+            return NULL;
+        }
+        child = teptris_node_array_at(n, (size_t)i);
+        break;
+    }
+    default:
+        PyErr_SetString(PyExc_TypeError, "scalar is not subscriptable");
+        return NULL;
+    }
+    if (child == NULL) {
+        Py_RETURN_NONE;
+    }
+    return lazy_wrap((LazyOwner *)self_n->owner, child);
+}
+
+static PyObject *lazy_iter(PyObject *self) {
+    LazyNode *self_n = (LazyNode *)self;
+    const teptris_node *n = self_n->node;
+    PyObject *list = PyList_New(0);
+    if (list == NULL) return NULL;
+    switch (teptris_node_kind(n)) {
+    case TEPTRIS_TABLE: {
+        size_t len = teptris_node_table_length(n);
+        for (size_t i = 0; i < len; i++) {
+            teptris_view key;
+            const teptris_node *v = teptris_node_table_at(n, i, &key);
+            PyObject *k = PyUnicode_DecodeUTF8(key.ptr, (Py_ssize_t)key.len, "replace");
+            if (k == NULL) goto iter_fail;
+            PyObject *wrapped = lazy_wrap((LazyOwner *)self_n->owner, v);
+            if (wrapped == NULL) { Py_DECREF(k); goto iter_fail; }
+            PyObject *pair = PyTuple_Pack(2, k, wrapped);
+            Py_DECREF(k);
+            Py_DECREF(wrapped);
+            if (pair == NULL) goto iter_fail;
+            if (PyList_Append(list, pair) < 0) { Py_DECREF(pair); goto iter_fail; }
+            Py_DECREF(pair);
+        }
+        break;
+    }
+    case TEPTRIS_ARRAY: {
+        size_t len = teptris_node_array_length(n);
+        for (size_t i = 0; i < len; i++) {
+            PyObject *wrapped = lazy_wrap(
+                (LazyOwner *)self_n->owner, teptris_node_array_at(n, i));
+            if (wrapped == NULL) goto iter_fail;
+            if (PyList_Append(list, wrapped) < 0) {
+                Py_DECREF(wrapped);
+                goto iter_fail;
+            }
+            Py_DECREF(wrapped);
+        }
+        break;
+    }
+    default:
+        PyErr_SetString(PyExc_TypeError, "scalar is not iterable");
+        goto iter_fail;
+    }
+    {
+        PyObject *it = PyObject_GetIter(list);
+        Py_DECREF(list);
+        return it;
+    }
+iter_fail:
+    Py_DECREF(list);
+    return NULL;
+}
+
+static PyObject *lazy_to_python(PyObject *self, PyObject *Py_UNUSED(ignored)) {
+    return obj_from_node(((LazyNode *)self)->node);
+}
+
+static PyMethodDef LazyNode_methods[] = {
+    {"kind",   lazy_kind,       METH_NOARGS, "Return 'table' | 'array' | 'scalar'."},
+    {"value",  lazy_value,      METH_NOARGS, "Materialize a scalar (errors on containers)."},
+    {"to_dict",lazy_to_python,  METH_NOARGS, "Eagerly flatten to nested dict/list (tables/arrays)."},
+    {"to_list",lazy_to_python,  METH_NOARGS, "Alias of to_dict (root table or array)."},
+    {NULL, NULL, 0, NULL}
+};
+
+static PyType_Slot LazyNode_slots[] = {
+    {Py_tp_dealloc,  lazy_node_dealloc},
+    {Py_tp_traverse, lazy_node_traverse},
+    {Py_tp_clear,    lazy_node_clear},
+    {Py_tp_methods,  LazyNode_methods},
+    {Py_tp_getattro, (void *)PyObject_GenericGetAttr},
+    {Py_tp_iter,     lazy_iter},
+    {Py_sq_length,   lazy_len_sq},
+    {Py_mp_subscript, lazy_subscript},
+    {0, NULL}
+};
+
+static PyType_Spec LazyNode_spec = {
+    "teptris._native.LazyNode",  /* name */
+    sizeof(LazyNode),            /* basicsize */
+    0,                           /* itemsize */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    LazyNode_slots
+};
+
+static PyType_Slot LazyOwner_slots[] = {
+    {Py_tp_dealloc,  lazy_owner_dealloc},
+    {Py_tp_traverse, lazy_owner_traverse},
+    {Py_tp_clear,    lazy_owner_clear},
+    {0, NULL}
+};
+
+static PyType_Spec LazyOwner_spec = {
+    "teptris._native.LazyOwner",
+    sizeof(LazyOwner),
+    0,
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    LazyOwner_slots
+};
+
+static PyObject *ext_lazy_load(PyObject *self, PyObject *args) {
+    (void)self;
+    PyObject *obj;
+    if (!PyArg_ParseTuple(args, "O", &obj)) return NULL;
+    const char *data = NULL;
+    Py_ssize_t len = 0;
+    PyObject *bytes = NULL;
+    if (PyUnicode_Check(obj)) {
+        bytes = PyUnicode_AsUTF8String(obj);
+        if (bytes == NULL) return NULL;
+        data = PyBytes_AsString(bytes);
+        len = PyBytes_Size(bytes);
+    } else if (PyBytes_Check(obj)) {
+        bytes = PyBytes_FromObject(obj);  /* own a copy */
+        if (bytes == NULL) return NULL;
+        data = PyBytes_AsString(bytes);
+        len = PyBytes_Size(bytes);
+    } else {
+        PyErr_SetString(PyExc_TypeError, "loads_lazy() expects str or bytes");
+        return NULL;
+    }
+    LazyOwner *owner =
+        (LazyOwner *)PyObject_GC_New(LazyOwner, LazyOwnerType);
+    if (owner == NULL) {
+        Py_DECREF(bytes);
+        return NULL;
+    }
+    owner->doc = NULL;
+    owner->input = bytes;
+    PyObject_GC_Track(owner); /* tracked even on the error path so
+                               * PyObject_GC_Del is the correct free */
+    teptris_status st = teptris_parse(data, (size_t)len, NULL, &owner->doc);
+    if (st != TEPTRIS_OK) {
+        const teptris_error *e = teptris_document_error(owner->doc);
+        size_t line = e->line, column = e->column;
+        PyObject *ex = PyObject_CallFunction(TomlDecodeError, "s", e->message);
+        teptris_document_free(owner->doc);
+        owner->doc = NULL; /* the owner's dealloc must not double-free */
+        owner->input = NULL; /* transfer the bytes-ref ownership to the
+                              * error path; Py_DECREF(owner) below will
+                              * then NOT decref the bytes (avoiding UAF) */
+        Py_DECREF(owner);
+        Py_DECREF(bytes);
+        if (ex != NULL) {
+            PyObject_SetAttrString(ex, "line", PyLong_FromSize_t(line));
+            PyObject_SetAttrString(ex, "column", PyLong_FromSize_t(column));
+            PyErr_SetObject(TomlDecodeError, ex);
+        }
+        return NULL;
+    }
+    PyObject *root = lazy_wrap(owner, teptris_document_root(owner->doc));
+    /* root holds the only owner ref; both are GC-tracked. The bytes
+     * object is alive through owner->input. */
+    return root;
+}
 
 /* ------------------------------------------------------------------ dump */
 
@@ -356,6 +664,8 @@ static PyObject *ext_dumps(PyObject *self, PyObject *args) {
 
 static PyMethodDef methods[] = {
     {"loads", ext_load, METH_VARARGS, "Parse TOML into Python objects."},
+    {"loads_lazy", ext_lazy_load, METH_VARARGS,
+     "Parse TOML into a LazyNode; host objects materialize on access."},
     {"dumps", ext_dumps, METH_VARARGS,
      "Serialize a dict tree to canonical TOML via the shared emitter."},
     {NULL, NULL, 0, NULL}
@@ -383,5 +693,15 @@ PyMODINIT_FUNC PyInit__native(void) {
     TomlDecodeError = PyErr_NewException("teptris._native.DecodeError", NULL, NULL);
     Py_INCREF(TomlDecodeError);
     PyModule_AddObject(m, "DecodeError", TomlDecodeError);
+    LazyNodeType = (PyTypeObject *)PyType_FromSpec(&LazyNode_spec);
+    LazyOwnerType = (PyTypeObject *)PyType_FromSpec(&LazyOwner_spec);
+    if (LazyNodeType == NULL || LazyOwnerType == NULL) {
+        Py_DECREF(m);
+        return NULL;
+    }
+    Py_INCREF(LazyNodeType);
+    Py_INCREF(LazyOwnerType);
+    PyModule_AddObject(m, "LazyNode", (PyObject *)LazyNodeType);
+    PyModule_AddObject(m, "LazyOwner", (PyObject *)LazyOwnerType);
     return m;
 }
