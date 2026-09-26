@@ -44,6 +44,11 @@ static PyObject *obj_from_node(const teptris_node *n) {
             const teptris_node *v = teptris_node_table_at(n, i, &key);
             PyObject *k = PyUnicode_DecodeUTF8(key.ptr, (Py_ssize_t)key.len, "replace");
             if (!k) { Py_DECREF(h); return NULL; }
+            /* Table keys repeat across a corpus: interning gives one
+             * object per distinct key with the hash cached on it, so
+             * later SetItem calls skip re-hashing. Value strings stay
+             * fresh — they are data, usually unique. */
+            PyUnicode_InternInPlace(&k);
             PyObject *val = obj_from_node(v);
             if (!val) { Py_DECREF(k); Py_DECREF(h); return NULL; }
             int rc = PyDict_SetItem(h, k, val);
@@ -437,6 +442,7 @@ static PyObject *lazy_iter(PyObject *self) {
             const teptris_node *v = teptris_node_table_at(n, i, &key);
             PyObject *k = PyUnicode_DecodeUTF8(key.ptr, (Py_ssize_t)key.len, "replace");
             if (k == NULL) goto iter_fail;
+            PyUnicode_InternInPlace(&k); /* repeated keys: one object */
             PyObject *wrapped = lazy_wrap((LazyOwner *)self_n->owner, v);
             if (wrapped == NULL) { Py_DECREF(k); goto iter_fail; }
             PyObject *pair = PyTuple_Pack(2, k, wrapped);
