@@ -168,8 +168,12 @@ jobs:
             TEPTRIS_INCLUDE=libteptris-src/src/include
             TEPTRIS_LIBDIR=libteptris-src/build/src
           # MSVC PGO: ci-lib-build.sh trains teptris.pgd on the runner;
-          # setup.py adds /LTCG /USEPROFILE:PGD=... to the ext link
+          # setup.py adds /LTCG /USEPROFILE:PGD=... to the ext link.
+          # per-OS environment OVERRIDES CIBW_ENVIRONMENT: the base
+          # vars must repeat here.
           CIBW_ENVIRONMENT_WINDOWS: >-
+            TEPTRIS_INCLUDE=libteptris-src/src/include
+            TEPTRIS_LIBDIR=libteptris-src/build/src
             TEPTRIS_MSVC_PGO=1
             TEPTRIS_PGD=libteptris-src/build/cli/teptris.pgd
           # cp/rm/mv ONLY: the Windows cells run this through cmd,
