@@ -103,11 +103,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Native cells build TWO lines per selector pair: cp39-abi3
+          # (works everywhere) and cp313-specific (drops the limited
+          # API for the fast datetime.h materialization). Emulated
+          # cells (armv7/ppc64le/s390x) stay cp39-abi3 only — doubling
+          # qemu builds is not worth the wall time.
           # plain cp39 identifiers: the abi3 wheel tag comes from
           # bdist_wheel py_limited_api, NOT from the selector (cibuildwheel
           # has no abi3 grammar; build the minimum CPython, tag it abi3)
-          - { os: ubuntu-latest,     builds: cp39-manylinux_x86_64 }
-          - { os: ubuntu-latest,     builds: cp39-musllinux_x86_64 }
+          - { os: ubuntu-latest,     builds: cp39-manylinux_x86_64 cp313-manylinux_x86_64 }
+          - { os: ubuntu-latest,     builds: cp39-musllinux_x86_64 cp313-musllinux_x86_64 }
           # 32-bit ARM: no runners exist; CIBW_ARCHS_LINUX selects the
           # cross build and the containers run under qemu binfmt
           # (installed below; native cells keep the auto default)
@@ -116,12 +121,12 @@ jobs:
           # big-endian server arches, emulated (qemu binfmt below)
           - { os: ubuntu-latest,     builds: cp39-manylinux_ppc64le, archs: ppc64le }
           - { os: ubuntu-latest,     builds: cp39-manylinux_s390x, archs: s390x }
-          - { os: ubuntu-24.04-arm,  builds: cp39-manylinux_aarch64 }
-          - { os: ubuntu-24.04-arm,  builds: cp39-musllinux_aarch64 }
-          - { os: macos-latest,      builds: cp39-macosx_arm64 }
-          - { os: macos-15-intel,    builds: cp39-macosx_x86_64 }
-          - { os: windows-latest,    builds: cp39-win_amd64 }
-          - { os: windows-11-arm,    builds: cp39-win_arm64 }
+          - { os: ubuntu-24.04-arm,  builds: cp39-manylinux_aarch64 cp313-manylinux_aarch64 }
+          - { os: ubuntu-24.04-arm,  builds: cp39-musllinux_aarch64 cp313-musllinux_aarch64 }
+          - { os: macos-latest,      builds: cp39-macosx_arm64 cp313-macosx_arm64 }
+          - { os: macos-15-intel,    builds: cp39-macosx_x86_64 cp313-macosx_x86_64 }
+          - { os: windows-latest,    builds: cp39-win_amd64 cp313-win_amd64 }
+          - { os: windows-11-arm,    builds: cp39-win_arm64 cp313-win_arm64 }
     steps:
       - uses: actions/checkout@v4
 

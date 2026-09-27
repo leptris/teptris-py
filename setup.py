@@ -11,6 +11,11 @@ from setuptools import setup, Extension
 # RELATIVE paths only: setuptools' manifest check rejects absolute
 # source paths when older setuptools builds the sdist (seen with the
 # 3.9-era resolution; setup.py always runs from the project root).
+# cp313+ builds skip the limited API: the full datetime.h C-API
+# replaces generic-call datetime materialization; the wheel then tags
+# cp313-cp313 instead of cp39-abi3 (pip prefers the specific tag).
+_abi3 = sys.version_info < (3, 13)
+
 _engine_src = sorted(
     glob.glob(os.path.join("vendor", "libteptris", "src", "teptris",
                            "**", "*.c"), recursive=True))
@@ -31,14 +36,14 @@ if _engine_src:
         sources=["src/teptris/_native.c"] + _engine_src,
         include_dirs=["vendor/libteptris/src",
                       "vendor/libteptris/src/include"],
-        py_limited_api=True,
+        py_limited_api=_abi3,
     )
 elif os.path.exists(_archive):
     ext = Extension(
         "teptris._native",
         sources=["src/teptris/_native.c"],
         include_dirs=[inc],
-        py_limited_api=True,
+        py_limited_api=_abi3,
         extra_objects=[_archive],
     )
 else:
@@ -49,7 +54,7 @@ else:
         "teptris._native",
         sources=["src/teptris/_native.c"],
         include_dirs=[inc],
-        py_limited_api=True,
+        py_limited_api=_abi3,
         library_dirs=[libdir],
         libraries=["teptris"],
         extra_link_args=(
@@ -71,4 +76,4 @@ else:
 # The engine source rides inside every wheel at teptris/_engine/
 # (populated by CIBW_BEFORE_BUILD; the recompile path).
 setup(ext_modules=[ext], package_dir={"": "src"},
-      options={"bdist_wheel": {"py_limited_api": "cp39"}})
+      options=({"bdist_wheel": {"py_limited_api": "cp39"}} if _abi3 else {}))
