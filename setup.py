@@ -30,6 +30,13 @@ libdir = os.environ.get("TEPTRIS_LIBDIR", "../teptris/build-shared/src")
 _archive = os.path.join(
     libdir, "teptris.lib" if sys.platform == "win32" else "libteptris.a"
 )
+# MSVC PGO (ci-lib-build.sh trained the pgd): the archive holds /GL
+# bitcode, so the consuming link must run /LTCG and apply the profile.
+_msvc_pgo_args = []
+if os.environ.get("TEPTRIS_MSVC_PGO") == "1":
+    pgd = os.environ.get("TEPTRIS_PGD",
+                         "libteptris-src/build/cli/teptris.pgd")
+    _msvc_pgo_args = ["/LTCG", "/USEPROFILE:PGD=" + os.path.abspath(pgd)]
 if _engine_src:
     ext = Extension(
         "teptris._native",
@@ -45,6 +52,7 @@ elif os.path.exists(_archive):
         include_dirs=[inc],
         py_limited_api=_abi3,
         extra_objects=[_archive],
+        extra_link_args=_msvc_pgo_args,
     )
 else:
     # @loader_path is Mach-O; ELF spells it $ORIGIN; PE has neither —

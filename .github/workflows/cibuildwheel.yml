@@ -3,7 +3,8 @@ name: cibuildwheel
 # abi3 wheels (closes #20): one cp39-abi3 wheel per platform covers every
 # CPython >= 3.9. Linux cells build the C archive INSIDE each container
 # (manylinux and musllinux must link their own libc); macOS and Windows
-# build on the runner once (clang/gcc PGO, plain MSVC). The module links
+# build on the runner once (PGO: clang/gcc via the C core script,
+# MSVC via the trained pgd). The module links
 # the static archive, so nothing needs repair or relocation.
 
 on:
@@ -141,8 +142,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      # runner-side build for mac (clang PGO) and windows (plain MSVC;
-      # PGO there is LTCG-bound). Linux builds inside the containers.
+      # runner-side build for mac and windows, both PGO-trained
+      # (windows: /GL + /GENPROFILE CLI train; the pgd is applied at the
+      # setuptools link via TEPTRIS_MSVC_PGO). Linux builds inside the
+      # containers.
       - name: Build the C static library (PGO where it pays)
         if: runner.os != 'Linux'
         shell: bash
@@ -164,6 +167,11 @@ jobs:
           CIBW_ENVIRONMENT: >-
             TEPTRIS_INCLUDE=libteptris-src/src/include
             TEPTRIS_LIBDIR=libteptris-src/build/src
+          # MSVC PGO: ci-lib-build.sh trains teptris.pgd on the runner;
+          # setup.py adds /LTCG /USEPROFILE:PGD=... to the ext link
+          CIBW_ENVIRONMENT_WINDOWS: >-
+            TEPTRIS_MSVC_PGO=1
+            TEPTRIS_PGD=libteptris-src/build/cli/teptris.pgd
           # cp/rm/mv ONLY: the Windows cells run this through cmd,
           # where mkdir -p does not exist (proven the hard way). The
           # second cp nests src/ inside the first copy's directory;
