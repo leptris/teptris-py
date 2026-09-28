@@ -38,7 +38,9 @@ case "$(uname -s)" in
     cat > _pgotrain.py <<'PYEOF'
 import ctypes, glob, os
 here = os.path.dirname(os.path.abspath(__file__))
-dll = ctypes.CDLL(os.path.join(here, "libteptris-src", "bpgd", "train.pyd"))
+bp = os.path.join(here, "libteptris-src", "bpgd")
+os.add_dll_directory(bp)
+dll = ctypes.CDLL(os.path.join(bp, "train.pyd"), winmode=0)
 dll.teptris_parse.restype = ctypes.c_int
 dll.teptris_parse.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_void_p,
                               ctypes.POINTER(ctypes.c_void_p)]
@@ -79,7 +81,9 @@ rem engine objects expect (__imp_realloc & friends, LNK2001).
 rem linker-only flags go after /link; cl eats everything before it
 cl /LD /MD /O2 /Fe:$SRC\bpgd\train.pyd $SRC\btrain\train_shim.obj /link /LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF /NODEFAULTLIB:libcmt.lib /EXPORT:PyInit__native /WHOLEARCHIVE:$SRC\btrain\src\teptris.lib || exit /b 1
 python _pgotrain.py || exit /b 1
-cd $SRC\bpgd || exit /b 1
+rem stage the VC redist CRT beside the pyd so its dependencies resolve
+for /d %%r in ("$VSPATH"\VC\Redist\MSVC\*) do if exist "%%r\$VSARCH\Microsoft.VC143.CRT" xcopy /y "%%r\$VSARCH\Microsoft.VC143.CRT\*.dll" $SRC\bpgd\ >/dev/null
+cd /d %CD%\$SRC\bpgd || exit /b 1
 pgomgr /merge train.pgd || exit /b 1
 CMDEOF
     cmd //c _build_msvc.cmd
