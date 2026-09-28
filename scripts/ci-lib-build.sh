@@ -43,11 +43,16 @@ case "$(uname -s)" in
     cat > _build_msvc.cmd <<CMDEOF
 @echo on
 call "$VCVARS" $VSARCH || exit /b 1
-cmake -B $SRC\build -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF "-DCMAKE_C_FLAGS_RELEASE=/O2 /GL" "-DCMAKE_SHARED_LINKER_FLAGS_RELEASE=/LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF" || exit /b 1
-cmake --build $SRC\build || exit /b 1
-set PATH=$SRC\build\src;%PATH%
-for %%f in ($SRC\bench-corpus\*.toml) do $SRC\build\cli\teptris.exe format %%f >nul || exit /b 1
-cd $SRC\build\src || exit /b 1
+rem two trees: MSVC names the shared import library teptris.lib - the
+rem same name as the static archive - so one tree with both targets
+rem breaks Ninja (multiple rules generate src/teptris.lib)
+cmake -B $SRC\bstatic -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF "-DCMAKE_C_FLAGS_RELEASE=/O2 /GL" || exit /b 1
+cmake --build $SRC\bstatic || exit /b 1
+cmake -B $SRC\bshared -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DTEPTRIS_ENABLE_LTO=OFF "-DCMAKE_C_FLAGS_RELEASE=/O2 /GL" "-DCMAKE_SHARED_LINKER_FLAGS_RELEASE=/LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF" || exit /b 1
+cmake --build $SRC\bshared || exit /b 1
+set PATH=$SRC\bshared\src;%PATH%
+for %%f in ($SRC\bench-corpus\*.toml) do $SRC\bshared\cli\teptris.exe format %%f >nul || exit /b 1
+cd $SRC\bshared\src || exit /b 1
 pgomgr /merge teptris.pgd || exit /b 1
 CMDEOF
     cmd //c _build_msvc.cmd
@@ -57,4 +62,4 @@ CMDEOF
     ;;
   *) echo "unsupported platform: $(uname -s)" >&2; exit 1 ;;
 esac
-ls -la "$SRC/build/src/"
+ls -la "$SRC/bstatic/src/" "$SRC/bshared/src/"
