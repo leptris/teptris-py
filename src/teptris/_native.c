@@ -9,23 +9,24 @@ The C ABI for both paths lives in libteptris (`teptris/teptris.h`). The
 lazy twin avoids materializing the intermediate dict/list for the many
 shape where only a small subset of the tree is touched (teptris#79). */
 #define PY_SSIZE_T_CLEAN
-/* abi3 for < 3.13 (#20): the datetime C-API is not in the limited
- * API, so all datetime work goes through cached callables there.
- * 3.13+ wheels build without the limited API and take the fast
- * datetime.h path below — setup.py drops py_limited_api in lockstep
- * so the wheel tags cp313-cp313 instead of cp39-abi3. */
+/* abi3 (#20): the datetime C-API is not in the limited API. The
+ * cp39-abi3 wheel keeps the cached-callables path; every
+ * version-specific wheel (cp310-cp313) builds without the limited
+ * API and takes the fast datetime.h path below — setup.py drops
+ * py_limited_api in lockstep so those wheels tag cp3NN-cp3NN. */
 #if !defined(Py_LIMITED_API) && defined(PY_VERSION_HEX) && \
-    PY_VERSION_HEX < 0x030D0000
+    PY_VERSION_HEX < 0x030A0000
 #define Py_LIMITED_API 0x03090000
 #endif
 #include <Python.h>
 #include "teptris/teptris.h"
 
-/* cp313 wheels build WITHOUT the limited API: the full datetime.h
- * C-API replaces the generic-call materialization (measured 51% of
- * datetime_heavy load: PyArg_ParseTupleAndKeywords inside type_call).
- * The abi3 line keeps the cached-callables path. */
-#if !defined(Py_LIMITED_API) && PY_VERSION_HEX >= 0x030D0000
+/* version-specific wheels build WITHOUT the limited API: the full
+ * datetime.h C-API replaces the generic-call materialization
+ * (measured 51% of datetime_heavy load:
+ * PyArg_ParseTupleAndKeywords inside type_call). The abi3 line keeps
+ * the cached-callables path. */
+#if !defined(Py_LIMITED_API) && PY_VERSION_HEX >= 0x030A0000
 #define TEPTRIS_FAST_DT 1
 #endif
 
