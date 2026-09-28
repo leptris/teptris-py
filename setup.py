@@ -11,10 +11,11 @@ from setuptools import setup, Extension
 # RELATIVE paths only: setuptools' manifest check rejects absolute
 # source paths when older setuptools builds the sdist (seen with the
 # 3.9-era resolution; setup.py always runs from the project root).
-# cp313+ builds skip the limited API: the full datetime.h C-API
-# replaces generic-call datetime materialization; the wheel then tags
-# cp313-cp313 instead of cp39-abi3 (pip prefers the specific tag).
-_abi3 = sys.version_info < (3, 13)
+# version-specific builds (cp310+) skip the limited API: the full
+# datetime.h C-API replaces generic-call datetime materialization;
+# those wheels tag cp3NN-cp3NN while 3.9 keeps the cp39-abi3 line
+# (pip prefers the version-specific tag where one exists).
+_abi3 = sys.version_info < (3, 10)
 
 _engine_src = sorted(
     glob.glob(os.path.join("vendor", "libteptris", "src", "teptris",
