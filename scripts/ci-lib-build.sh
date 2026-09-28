@@ -16,20 +16,15 @@ case "$(uname -s)" in
     ;;
   MINGW*|MSYS*)
     # MSVC PGO two-stage (the unix branch delegates to the C core
-    # script, which does not wire MSVC — vcvars + pgomgr live here).
+    # script, which does not wire MSVC - vcvars + pgomgr live here).
     # LNK1268 requires the /GENPROFILE link and the /USEPROFILE link
-    # to be the same image kind, and the consuming link (setuptools)
-    # builds a DLL (.pyd) — so the TRAIN must be a DLL link too:
-    #   stage 1: engine /GL bitcode; teptris_shared (DLL) linked
-    #            /LTCG /GENPROFILE; plain-CLI links that DLL; the
-    #            static archive for setup.py comes from the same /GL
-    #            objects
-    #   train:   teptris format over the generated corpus — the CLI
-    #            drives the instrumented DLL (pgc beside the DLL)
-    #   merge:   pgomgr /merge into teptris.pgd
-    # The pgd then rides to the setuptools link (setup.py adds
-    # /LTCG /USEPROFILE:PGD=... when TEPTRIS_MSVC_PGO=1) — for a
-    # static lib, LTCG only happens at the consuming link.
+    # to agree on their option sets (INCREMENTAL, OPT, image kind,
+    # EXPORTs...), and the consuming link is the setuptools ext link:
+    # a DLL exporting PyInit__native. So the TRAIN is exactly that:
+    # a shim PyInit__native + the static /GL archive linked
+    # /DLL /LTCG /GENPROFILE, driven by a ctypes loop over the corpus
+    # (real parse+emit training), then pgomgr /merge. setup.py adds
+    # /LTCG /USEPROFILE:PGD=... at its link when TEPTRIS_MSVC_PGO=1.
     # Ninja inside vcvars (cmake's VS generator finds no VS instance on
     # the runner images; vswhere -products * does)
     VSWHERE="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
@@ -40,26 +35,49 @@ case "$(uname -s)" in
     # msys quote conversion; a file sidesteps quoting entirely
     VCVARS=$(cygpath -w "$VSPATH/VC/Auxiliary/Build/vcvarsall.bat")
     python3 "$SRC/scripts/gen_bench_corpus.py" "$SRC/bench-corpus"
+    cat > _pgotrain.py <<'PYEOF'
+import ctypes, glob, os
+here = os.path.dirname(os.path.abspath(__file__))
+dll = ctypes.CDLL(os.path.join(here, "libteptris-src", "btrain", "train.pyd"))
+dll.teptris_parse.restype = ctypes.c_int
+dll.teptris_parse.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_void_p,
+                              ctypes.POINTER(ctypes.c_void_p)]
+dll.teptris_document_emit.restype = ctypes.c_int
+dll.teptris_document_emit.argtypes = [ctypes.c_void_p,
+                                      ctypes.POINTER(ctypes.c_char_p),
+                                      ctypes.POINTER(ctypes.c_size_t)]
+dll.teptris_document_free.argtypes = [ctypes.c_void_p]
+for path in sorted(glob.glob(os.path.join(here, "libteptris-src",
+                                          "bench-corpus", "*.toml"))):
+    data = open(path, "rb").read()
+    for _ in range(3):
+        doc = ctypes.c_void_p()
+        if dll.teptris_parse(data, len(data), None, ctypes.byref(doc)) != 0:
+            raise SystemExit("train parse failed: " + path)
+        buf = ctypes.c_char_p()
+        n = ctypes.c_size_t()
+        dll.teptris_document_emit(doc, ctypes.byref(buf), ctypes.byref(n))
+        dll.teptris_document_free(doc)
+print("training ok")
+PYEOF
     cat > _build_msvc.cmd <<CMDEOF
 @echo on
 call "$VCVARS" $VSARCH || exit /b 1
-rem two trees: MSVC names the shared import library teptris.lib - the
-rem same name as the static archive - so one tree with both targets
-rem breaks Ninja (multiple rules generate src/teptris.lib)
 cmake -B $SRC\bstatic -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF "-DCMAKE_C_FLAGS_RELEASE=/O2 /GL" || exit /b 1
 cmake --build $SRC\bstatic || exit /b 1
-cmake -B $SRC\bshared -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=OFF -DTEPTRIS_ENABLE_LTO=OFF "-DCMAKE_C_FLAGS_RELEASE=/O2 /GL" "-DCMAKE_SHARED_LINKER_FLAGS_RELEASE=/LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF" || exit /b 1
-cmake --build $SRC\bshared || exit /b 1
-set PATH=$SRC\bshared\src;%PATH%
-for %%f in ($SRC\bench-corpus\*.toml) do $SRC\bshared\cli\teptris.exe format %%f >nul || exit /b 1
-cd $SRC\bshared\src || exit /b 1
-pgomgr /merge teptris.pgd || exit /b 1
+mkdir $SRC\btrain || exit /b 1
+echo void PyInit__native(void){} > $SRC\btrain\train_shim.c || exit /b 1
+cl /O2 /c /Fo$SRC\btrain\train_shim.obj $SRC\btrain\train_shim.c || exit /b 1
+link /DLL /LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF /EXPORT:PyInit__native /OUT:$SRC\btrain\train.pyd $SRC\bstatic\src\teptris.lib $SRC\btrain\train_shim.obj || exit /b 1
+python _pgotrain.py || exit /b 1
+cd $SRC\btrain || exit /b 1
+pgomgr /merge train.pgd || exit /b 1
 CMDEOF
     cmd //c _build_msvc.cmd
     rc=$?
-    rm -f _build_msvc.cmd
+    rm -f _build_msvc.cmd _pgotrain.py
     exit $rc
     ;;
   *) echo "unsupported platform: $(uname -s)" >&2; exit 1 ;;
 esac
-ls -la "$SRC/bstatic/src/" "$SRC/bshared/src/"
+ls -la "$SRC/bstatic/src/" "$SRC/btrain/"*.pgd

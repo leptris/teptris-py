@@ -36,7 +36,7 @@ _archive = os.path.join(
 _msvc_pgo_args = []
 if os.environ.get("TEPTRIS_MSVC_PGO") == "1":
     pgd = os.environ.get("TEPTRIS_PGD",
-                         "libteptris-src/bshared/src/teptris.pgd")
+                         "libteptris-src/btrain/train.pgd")
     _msvc_pgo_args = ["/LTCG", "/USEPROFILE:PGD=" + os.path.abspath(pgd)]
 if _engine_src:
     ext = Extension(
