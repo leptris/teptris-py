@@ -710,6 +710,32 @@ static int put_scalar(teptris_builder *b, const char *key, size_t klen,
     if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_datetime)) {
         teptris_datetime dt;
         memset(&dt, 0, sizeof(dt));
+#ifdef TEPTRIS_FAST_DT
+        /* struct reads: no attribute crossings (utcoffset stays a
+         * real call — it is Python-level by design) */
+        dt.year = (int32_t)PyDateTime_GET_YEAR(v);
+        dt.month = (uint8_t)PyDateTime_GET_MONTH(v);
+        dt.day = (uint8_t)PyDateTime_GET_DAY(v);
+        dt.hour = (uint8_t)PyDateTime_DATE_GET_HOUR(v);
+        dt.minute = (uint8_t)PyDateTime_DATE_GET_MINUTE(v);
+        dt.second = (uint8_t)PyDateTime_DATE_GET_SECOND(v);
+        dt.nanosecond =
+            (uint32_t)PyDateTime_DATE_GET_MICROSECOND(v) * 1000u;
+        PyObject *tz = PyDateTime_DATE_GET_TZINFO(v); /* borrowed */
+        if (tz == Py_None) {
+            return dump_check(teptris_builder_put_datetime(
+                b, key, klen, TEPTRIS_DATETIME_LOCAL, &dt));
+        }
+        PyObject *off = PyObject_CallMethod(tz, "utcoffset", "O", v);
+        if (!off) return -1;
+        if (off != Py_None && PyDelta_Check(off)) {
+            dt.offset_seconds = PyDateTime_DELTA_GET_DAYS(off) * 86400 +
+                                PyDateTime_DELTA_GET_SECONDS(off);
+        }
+        Py_DECREF(off);
+        return dump_check(teptris_builder_put_datetime(
+            b, key, klen, TEPTRIS_DATETIME_OFFSET, &dt));
+#else
         dt.year = (int32_t)attr_long(v, "year");
         dt.month = (uint8_t)attr_long(v, "month");
         dt.day = (uint8_t)attr_long(v, "day");
@@ -734,23 +760,38 @@ static int put_scalar(teptris_builder *b, const char *key, size_t klen,
         Py_DECREF(off);
         return dump_check(teptris_builder_put_datetime(
             b, key, klen, TEPTRIS_DATETIME_OFFSET, &dt));
+#endif
     }
     if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_date)) {
         teptris_datetime dt;
         memset(&dt, 0, sizeof(dt));
+#ifdef TEPTRIS_FAST_DT
+        dt.year = (int32_t)PyDateTime_GET_YEAR(v);
+        dt.month = (uint8_t)PyDateTime_GET_MONTH(v);
+        dt.day = (uint8_t)PyDateTime_GET_DAY(v);
+#else
         dt.year = (int32_t)attr_long(v, "year");
         dt.month = (uint8_t)attr_long(v, "month");
         dt.day = (uint8_t)attr_long(v, "day");
+#endif
         return dump_check(teptris_builder_put_datetime(
             b, key, klen, TEPTRIS_DATE_LOCAL, &dt));
     }
     if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_time)) {
         teptris_datetime dt;
         memset(&dt, 0, sizeof(dt));
+#ifdef TEPTRIS_FAST_DT
+        dt.hour = (uint8_t)PyDateTime_TIME_GET_HOUR(v);
+        dt.minute = (uint8_t)PyDateTime_TIME_GET_MINUTE(v);
+        dt.second = (uint8_t)PyDateTime_TIME_GET_SECOND(v);
+        dt.nanosecond =
+            (uint32_t)PyDateTime_TIME_GET_MICROSECOND(v) * 1000u;
+#else
         dt.hour = (uint8_t)attr_long(v, "hour");
         dt.minute = (uint8_t)attr_long(v, "minute");
         dt.second = (uint8_t)attr_long(v, "second");
         dt.nanosecond = (uint32_t)attr_long(v, "microsecond") * 1000u;
+#endif
         return dump_check(teptris_builder_put_datetime(
             b, key, klen, TEPTRIS_TIME_LOCAL, &dt));
     }
