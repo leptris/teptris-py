@@ -72,7 +72,9 @@ cmake --build $SRC\btrain --target teptris || exit /b 1
 mkdir $SRC\bpgd 2>nul
 echo void PyInit__native(void){} > $SRC\btrain\train_shim.c || exit /b 1
 cl /O2 /c /Fo$SRC\btrain\train_shim.obj $SRC\btrain\train_shim.c || exit /b 1
-link /DLL /LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF /EXPORT:PyInit__native /OUT:$SRC\bpgd\train.pyd $SRC\btrain\src\teptris.lib $SRC\btrain\train_shim.obj || exit /b 1
+rem WHOLEARCHIVE: the shim references no engine symbols, so member-wise
+rem pull would leave nothing to instrument (LNK1264)
+link /DLL /LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF /EXPORT:PyInit__native /WHOLEARCHIVE:$SRC\btrain\src\teptris.lib /OUT:$SRC\bpgd\train.pyd $SRC\btrain\train_shim.obj || exit /b 1
 python _pgotrain.py || exit /b 1
 cd $SRC\bpgd || exit /b 1
 pgomgr /merge train.pgd || exit /b 1
