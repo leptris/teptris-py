@@ -176,7 +176,7 @@ jobs:
             TEPTRIS_INCLUDE=libteptris-src/src/include
             TEPTRIS_LIBDIR=libteptris-src/bstatic/src
             TEPTRIS_MSVC_PGO=1
-            TEPTRIS_PGD=libteptris-src/bshared/src/teptris.pgd
+            TEPTRIS_PGD=libteptris-src/btrain/train.pgd
           # cp/rm/mv ONLY: the Windows cells run this through cmd,
           # where mkdir -p does not exist (proven the hard way). The
           # second cp nests src/ inside the first copy's directory;
