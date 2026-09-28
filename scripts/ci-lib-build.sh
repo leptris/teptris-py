@@ -38,7 +38,7 @@ case "$(uname -s)" in
     cat > _pgotrain.py <<'PYEOF'
 import ctypes, glob, os
 here = os.path.dirname(os.path.abspath(__file__))
-dll = ctypes.CDLL(os.path.join(here, "libteptris-src", "btrain", "train.pyd"))
+dll = ctypes.CDLL(os.path.join(here, "libteptris-src", "bpgd", "train.pyd"))
 dll.teptris_parse.restype = ctypes.c_int
 dll.teptris_parse.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_void_p,
                               ctypes.POINTER(ctypes.c_void_p)]
@@ -63,14 +63,18 @@ PYEOF
     cat > _build_msvc.cmd <<CMDEOF
 @echo on
 call "$VCVARS" $VSARCH || exit /b 1
-cmake -B $SRC\bstatic -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF "-DCMAKE_C_FLAGS_RELEASE=/O2 /GL" || exit /b 1
+rem /GL comes from the engine's own knobs (TEPTRIS_PROFILE_*), not
+rem hand-rolled CFLAGS - the engine wires MSVC PGO per target
+cmake -B $SRC\bstatic -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF -DTEPTRIS_PROFILE_USE=ON || exit /b 1
 cmake --build $SRC\bstatic || exit /b 1
-mkdir $SRC\btrain || exit /b 1
+cmake -B $SRC\btrain -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF -DTEPTRIS_PROFILE_TRAIN=ON || exit /b 1
+cmake --build $SRC\btrain --target teptris || exit /b 1
+mkdir $SRC\bpgd 2>/dev/null
 echo void PyInit__native(void){} > $SRC\btrain\train_shim.c || exit /b 1
 cl /O2 /c /Fo$SRC\btrain\train_shim.obj $SRC\btrain\train_shim.c || exit /b 1
-link /DLL /LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF /EXPORT:PyInit__native /OUT:$SRC\btrain\train.pyd $SRC\bstatic\src\teptris.lib $SRC\btrain\train_shim.obj || exit /b 1
+link /DLL /LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF /EXPORT:PyInit__native /OUT:$SRC\bpgd\train.pyd $SRC\btrain\src\teptris.lib $SRC\btrain\train_shim.obj || exit /b 1
 python _pgotrain.py || exit /b 1
-cd $SRC\btrain || exit /b 1
+cd $SRC\bpgd || exit /b 1
 pgomgr /merge train.pgd || exit /b 1
 CMDEOF
     cmd //c _build_msvc.cmd
@@ -80,4 +84,4 @@ CMDEOF
     ;;
   *) echo "unsupported platform: $(uname -s)" >&2; exit 1 ;;
 esac
-ls -la "$SRC/bstatic/src/" "$SRC/btrain/"*.pgd
+ls -la "$SRC/bstatic/src/" "$SRC/bpgd/"*.pgd
