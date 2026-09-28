@@ -69,7 +69,7 @@ cmake -B $SRC\bstatic -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTIN
 cmake --build $SRC\bstatic || exit /b 1
 cmake -B $SRC\btrain -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF -DTEPTRIS_PROFILE_TRAIN=ON || exit /b 1
 cmake --build $SRC\btrain --target teptris || exit /b 1
-mkdir $SRC\bpgd 2>/dev/null
+mkdir $SRC\bpgd 2>nul
 echo void PyInit__native(void){} > $SRC\btrain\train_shim.c || exit /b 1
 cl /O2 /c /Fo$SRC\btrain\train_shim.obj $SRC\btrain\train_shim.c || exit /b 1
 link /DLL /LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF /EXPORT:PyInit__native /OUT:$SRC\bpgd\train.pyd $SRC\btrain\src\teptris.lib $SRC\btrain\train_shim.obj || exit /b 1
