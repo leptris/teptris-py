@@ -36,7 +36,7 @@ case "$(uname -s)" in
     cat > _build_msvc.cmd <<CMDEOF
 @echo on
 call "$VCVARS" $VSARCH || exit /b 1
-cmake -B $SRC\build -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF "-DCMAKE_C_FLAGS_RELEASE=/O2 /GL" "-DCMAKE_EXE_LINKER_FLAGS_RELEASE=/LTCG /GENPROFILE" || exit /b 1
+cmake -B $SRC\build -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF "-DCMAKE_C_FLAGS_RELEASE=/O2 /GL" "-DCMAKE_EXE_LINKER_FLAGS_RELEASE=/LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF" || exit /b 1
 cmake --build $SRC\build --target teptris_cli || exit /b 1
 cd $SRC\build\cli || exit /b 1
 for %%f in (..\..\bench-corpus\*.toml) do teptris.exe format %%f >nul || exit /b 1
