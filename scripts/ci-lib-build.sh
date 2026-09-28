@@ -16,10 +16,17 @@ case "$(uname -s)" in
     ;;
   MINGW*|MSYS*)
     # MSVC PGO two-stage (the unix branch delegates to the C core
-    # script, which does not wire MSVC — vcvars + pgomgr live here):
-    #   stage 1: engine /GL bitcode, CLI linked /LTCG /GENPROFILE
-    #   train:   teptris format over the generated corpus (pgc files)
-    #   merge:   pgomgr /merge into the pgd
+    # script, which does not wire MSVC — vcvars + pgomgr live here).
+    # LNK1268 requires the /GENPROFILE link and the /USEPROFILE link
+    # to be the same image kind, and the consuming link (setuptools)
+    # builds a DLL (.pyd) — so the TRAIN must be a DLL link too:
+    #   stage 1: engine /GL bitcode; teptris_shared (DLL) linked
+    #            /LTCG /GENPROFILE; plain-CLI links that DLL; the
+    #            static archive for setup.py comes from the same /GL
+    #            objects
+    #   train:   teptris format over the generated corpus — the CLI
+    #            drives the instrumented DLL (pgc beside the DLL)
+    #   merge:   pgomgr /merge into teptris.pgd
     # The pgd then rides to the setuptools link (setup.py adds
     # /LTCG /USEPROFILE:PGD=... when TEPTRIS_MSVC_PGO=1) — for a
     # static lib, LTCG only happens at the consuming link.
@@ -36,10 +43,11 @@ case "$(uname -s)" in
     cat > _build_msvc.cmd <<CMDEOF
 @echo on
 call "$VCVARS" $VSARCH || exit /b 1
-cmake -B $SRC\build -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF "-DCMAKE_C_FLAGS_RELEASE=/O2 /GL" "-DCMAKE_EXE_LINKER_FLAGS_RELEASE=/LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF" || exit /b 1
-cmake --build $SRC\build --target teptris_cli || exit /b 1
-cd $SRC\build\cli || exit /b 1
-for %%f in (..\..\bench-corpus\*.toml) do teptris.exe format %%f >nul || exit /b 1
+cmake -B $SRC\build -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=ON -DTEPTRIS_BUILD_SHARED=ON -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF "-DCMAKE_C_FLAGS_RELEASE=/O2 /GL" "-DCMAKE_SHARED_LINKER_FLAGS_RELEASE=/LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF" || exit /b 1
+cmake --build $SRC\build || exit /b 1
+set PATH=$SRC\build\src;%PATH%
+for %%f in ($SRC\bench-corpus\*.toml) do $SRC\build\cli\teptris.exe format %%f >nul || exit /b 1
+cd $SRC\build\src || exit /b 1
 pgomgr /merge teptris.pgd || exit /b 1
 CMDEOF
     cmd //c _build_msvc.cmd
