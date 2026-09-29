@@ -98,4 +98,4 @@ CMDEOF
     ;;
   *) echo "unsupported platform: $(uname -s)" >&2; exit 1 ;;
 esac
-ls -la "$SRC/bplain/src/" "$SRC/bstatic/src/" "$SRC/bpgd/"*.pgd
+ls -la "$SRC/build/src/"
