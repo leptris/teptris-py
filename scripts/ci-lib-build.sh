@@ -67,6 +67,11 @@ PYEOF
 call "$VCVARS" $VSARCH || exit /b 1
 rem /GL comes from the engine's own knobs (TEPTRIS_PROFILE_*), not
 rem hand-rolled CFLAGS - the engine wires MSVC PGO per target
+rem bplain: plain archive for the abi3 line (its distutils link has
+rem no /LTCG, and /GL objects require it)
+cmake -B $SRC\bplain -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF || exit /b 1
+cmake --build $SRC\bplain || exit /b 1
+rem bstatic: /GL archive for the PGO-consuming version-specific link
 cmake -B $SRC\bstatic -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF -DTEPTRIS_PROFILE_USE=ON || exit /b 1
 cmake --build $SRC\bstatic || exit /b 1
 cmake -B $SRC\btrain -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF -DTEPTRIS_PROFILE_TRAIN=ON || exit /b 1
@@ -93,4 +98,4 @@ CMDEOF
     ;;
   *) echo "unsupported platform: $(uname -s)" >&2; exit 1 ;;
 esac
-ls -la "$SRC/bstatic/src/" "$SRC/bpgd/"*.pgd
+ls -la "$SRC/bplain/src/" "$SRC/bstatic/src/" "$SRC/bpgd/"*.pgd
