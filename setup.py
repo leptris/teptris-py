@@ -36,8 +36,14 @@ _archive = os.path.join(
 )
 # MSVC PGO (ci-lib-build.sh trained the pgd): the archive holds /GL
 # bitcode, so the consuming link must run /LTCG and apply the profile.
+# PGO only for the version-specific wheels: cibuildwheel re-tests the
+# abi3 wheel on EVERY interpreter, and the /LTCG /USEPROFILE-linked
+# abi3 pyd loads under its build minor but not across minors on
+# Windows (measured: cp39-abi3 + PGO fails import under 3.10+). The
+# abi3 line keeps the plain link - the artifact that has always
+# loaded everywhere.
 _msvc_pgo_args = []
-if os.environ.get("TEPTRIS_MSVC_PGO") == "1":
+if os.environ.get("TEPTRIS_MSVC_PGO") == "1" and not _abi3:
     pgd = os.environ.get("TEPTRIS_PGD",
                          "libteptris-src/bpgd/train.pgd")
     _msvc_pgo_args = ["/LTCG", "/USEPROFILE:PGD=" + os.path.abspath(pgd)]
