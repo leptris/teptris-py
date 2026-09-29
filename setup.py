@@ -16,6 +16,9 @@ from setuptools import setup, Extension
 # those wheels tag cp3NN-cp3NN while 3.9 keeps the cp39-abi3 line
 # (pip prefers the version-specific tag where one exists).
 _abi3 = sys.version_info < (3, 10)
+# pass py_limited_api ONLY for the abi3 line: a literal False still
+# counts as "set" and bdist_wheel then tags the wheel abi3 anyway
+_ext_kw = {"py_limited_api": True} if _abi3 else {}
 
 _engine_src = sorted(
     glob.glob(os.path.join("vendor", "libteptris", "src", "teptris",
@@ -44,14 +47,14 @@ if _engine_src:
         sources=["src/teptris/_native.c"] + _engine_src,
         include_dirs=["vendor/libteptris/src",
                       "vendor/libteptris/src/include"],
-        py_limited_api=_abi3,
+        **_ext_kw,
     )
 elif os.path.exists(_archive):
     ext = Extension(
         "teptris._native",
         sources=["src/teptris/_native.c"],
         include_dirs=[inc],
-        py_limited_api=_abi3,
+        **_ext_kw,
         extra_objects=[_archive],
         extra_link_args=_msvc_pgo_args,
     )
@@ -63,7 +66,7 @@ else:
         "teptris._native",
         sources=["src/teptris/_native.c"],
         include_dirs=[inc],
-        py_limited_api=_abi3,
+        **_ext_kw,
         library_dirs=[libdir],
         libraries=["teptris"],
         extra_link_args=(
