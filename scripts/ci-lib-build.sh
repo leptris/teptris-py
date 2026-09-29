@@ -83,7 +83,7 @@ cl /LD /MD /O2 /Fe:$SRC\bpgd\train.pyd $SRC\btrain\train_shim.obj /link /LTCG /G
 python _pgotrain.py || exit /b 1
 rem stage the VC redist CRT beside the pyd so its dependencies resolve
 for /d %%r in ("$VSPATH"\VC\Redist\MSVC\*) do if exist "%%r\$VSARCH\Microsoft.VC143.CRT" xcopy /y "%%r\$VSARCH\Microsoft.VC143.CRT\*.dll" $SRC\bpgd\ >/dev/null
-cd /d %CD%\$SRC\bpgd || exit /b 1
+cd /d $SRC\bpgd || exit /b 1
 pgomgr /merge train.pgd || exit /b 1
 CMDEOF
     cmd //c _build_msvc.cmd
