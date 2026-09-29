@@ -171,9 +171,12 @@ jobs:
           CIBW_ARCHS_WINDOWS: ${{ runner.arch == 'ARM64' && 'ARM64' || 'AMD64' }}
           # relative to the build context: /project only exists in the
           # Linux docker cells, native mac/win runners need this
+          # unix engines build at libteptris-src/build (linux inside
+          # the containers, mac on the runner); windows at bstatic (the
+          # two-tree MSVC PGO split) - hence the per-OS override below
           CIBW_ENVIRONMENT: >-
             TEPTRIS_INCLUDE=libteptris-src/src/include
-            TEPTRIS_LIBDIR=libteptris-src/bstatic/src
+            TEPTRIS_LIBDIR=libteptris-src/build/src
           # MSVC PGO: ci-lib-build.sh trains teptris.pgd on the runner;
           # setup.py adds /LTCG /USEPROFILE:PGD=... to the ext link.
           # per-OS environment OVERRIDES CIBW_ENVIRONMENT: the base
