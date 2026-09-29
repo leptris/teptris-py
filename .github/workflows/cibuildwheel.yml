@@ -183,9 +183,7 @@ jobs:
           # vars must repeat here.
           CIBW_ENVIRONMENT_WINDOWS: >-
             TEPTRIS_INCLUDE=libteptris-src/src/include
-            TEPTRIS_LIBDIR=libteptris-src/bstatic/src
-            TEPTRIS_MSVC_PGO=1
-            TEPTRIS_PGD=libteptris-src/bpgd/train.pgd
+            TEPTRIS_LIBDIR=libteptris-src/bplain/src
           # cp/rm/mv ONLY: the Windows cells run this through cmd,
           # where mkdir -p does not exist (proven the hard way). The
           # second cp nests src/ inside the first copy's directory;
@@ -215,6 +213,13 @@ jobs:
         uses: pypa/cibuildwheel@v3.0.1
         env:
           CIBW_BUILD: ${{ matrix.vs_builds }}
+          # per-OS override replaces the base env: repeat it, then the
+          # windows PGO plumbing (bstatic /GL archive + trained pgd)
+          CIBW_ENVIRONMENT_WINDOWS: >-
+            TEPTRIS_INCLUDE=libteptris-src/src/include
+            TEPTRIS_LIBDIR=libteptris-src/bstatic/src
+            TEPTRIS_MSVC_PGO=1
+            TEPTRIS_PGD=libteptris-src/bpgd/train.pgd
 
       - uses: actions/upload-artifact@v4
         with:
