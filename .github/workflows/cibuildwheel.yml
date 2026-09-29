@@ -104,17 +104,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Native cells build cp39-abi3 (works everywhere) PLUS one
+          # Native cells build TWO lines via two cibuildwheel
+          # invocations: cp39-abi3 (works everywhere) and one
           # version-specific wheel per 3.10-3.13 (each drops the
           # limited API for the fast datetime.h materialization; the
           # PGO engine archive is built once per cell and shared).
+          # They MUST be separate invocations: cibuildwheel skips
+          # later CPython builds once an abi3 wheel exists.
           # Emulated cells (armv7/ppc64le/s390x) stay cp39-abi3 only —
           # quintupling emulated builds is not worth the wall time.
           # plain cp39 identifiers: the abi3 wheel tag comes from
           # bdist_wheel py_limited_api, NOT from the selector (cibuildwheel
           # has no abi3 grammar; build the minimum CPython, tag it abi3)
-          - { os: ubuntu-latest,     builds: cp39-manylinux_x86_64 cp310-manylinux_x86_64 cp311-manylinux_x86_64 cp312-manylinux_x86_64 cp313-manylinux_x86_64 }
-          - { os: ubuntu-latest,     builds: cp39-musllinux_x86_64 cp310-musllinux_x86_64 cp311-musllinux_x86_64 cp312-musllinux_x86_64 cp313-musllinux_x86_64 }
+          - { os: ubuntu-latest,     builds: cp39-manylinux_x86_64, vs_builds: cp310-manylinux_x86_64 cp311-manylinux_x86_64 cp312-manylinux_x86_64 cp313-manylinux_x86_64 }
+          - { os: ubuntu-latest,     builds: cp39-musllinux_x86_64, vs_builds: cp310-musllinux_x86_64 cp311-musllinux_x86_64 cp312-musllinux_x86_64 cp313-musllinux_x86_64 }
           # 32-bit ARM: no runners exist; CIBW_ARCHS_LINUX selects the
           # cross build and the containers run under qemu binfmt
           # (installed below; native cells keep the auto default)
@@ -123,12 +126,12 @@ jobs:
           # big-endian server arches, emulated (qemu binfmt below)
           - { os: ubuntu-latest,     builds: cp39-manylinux_ppc64le, archs: ppc64le }
           - { os: ubuntu-latest,     builds: cp39-manylinux_s390x, archs: s390x }
-          - { os: ubuntu-24.04-arm,  builds: cp39-manylinux_aarch64 cp310-manylinux_aarch64 cp311-manylinux_aarch64 cp312-manylinux_aarch64 cp313-manylinux_aarch64 }
-          - { os: ubuntu-24.04-arm,  builds: cp39-musllinux_aarch64 cp310-musllinux_aarch64 cp311-musllinux_aarch64 cp312-musllinux_aarch64 cp313-musllinux_aarch64 }
-          - { os: macos-latest,      builds: cp39-macosx_arm64 cp310-macosx_arm64 cp311-macosx_arm64 cp312-macosx_arm64 cp313-macosx_arm64 }
-          - { os: macos-15-intel,    builds: cp39-macosx_x86_64 cp310-macosx_x86_64 cp311-macosx_x86_64 cp312-macosx_x86_64 cp313-macosx_x86_64 }
-          - { os: windows-latest,    builds: cp39-win_amd64 cp310-win_amd64 cp311-win_amd64 cp312-win_amd64 cp313-win_amd64 }
-          - { os: windows-11-arm,    builds: cp39-win_arm64 cp310-win_arm64 cp311-win_arm64 cp312-win_arm64 cp313-win_arm64 }
+          - { os: ubuntu-24.04-arm,  builds: cp39-manylinux_aarch64, vs_builds: cp310-manylinux_aarch64 cp311-manylinux_aarch64 cp312-manylinux_aarch64 cp313-manylinux_aarch64 }
+          - { os: ubuntu-24.04-arm,  builds: cp39-musllinux_aarch64, vs_builds: cp310-musllinux_aarch64 cp311-musllinux_aarch64 cp312-musllinux_aarch64 cp313-musllinux_aarch64 }
+          - { os: macos-latest,      builds: cp39-macosx_arm64, vs_builds: cp310-macosx_arm64 cp311-macosx_arm64 cp312-macosx_arm64 cp313-macosx_arm64 }
+          - { os: macos-15-intel,    builds: cp39-macosx_x86_64, vs_builds: cp310-macosx_x86_64 cp311-macosx_x86_64 cp312-macosx_x86_64 cp313-macosx_x86_64 }
+          - { os: windows-latest,    builds: cp39-win_amd64, vs_builds: cp310-win_amd64 cp311-win_amd64 cp312-win_amd64 cp313-win_amd64 }
+          - { os: windows-11-arm,    builds: cp39-win_arm64, vs_builds: cp310-win_arm64 cp311-win_arm64 cp312-win_arm64 cp313-win_arm64 }
     steps:
       - uses: actions/checkout@v4
 
@@ -156,7 +159,10 @@ jobs:
         if: matrix.archs
         run: docker run --privileged --rm tonistiigi/binfmt --install arm,ppc64le,s390x
 
-      - name: cibuildwheel
+      # abi3 line first (its own invocation: cibuildwheel skips later
+      # CPython builds once an abi3 wheel exists, so the
+      # version-specific line must be a separate run)
+      - name: cibuildwheel (cp39-abi3)
         uses: pypa/cibuildwheel@v3.0.1
         env:
           CIBW_BUILD: ${{ matrix.builds }}
@@ -199,7 +205,15 @@ jobs:
             o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n');
             assert teptris.loads(teptris.dumps(o)) == o; print('smoke ok')"
 
+      # version-specific line (cp310-cp313, non-limited, fast
+      # datetime path): separate invocation, own-interpreter tests
+      - name: cibuildwheel (cp310-cp313)
+        if: matrix.vs_builds
+        uses: pypa/cibuildwheel@v3.0.1
+        env:
+          CIBW_BUILD: ${{ matrix.vs_builds }}
+
       - uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.builds }}
+          name: wheels-${{ matrix.os }}-${{ strategy.job-index }}
           path: wheelhouse/*.whl
