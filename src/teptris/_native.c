@@ -117,15 +117,15 @@ static PyObject *obj_from_node(const teptris_node *n) {
         default:
             break;
         }
-        {
-            PyObject *dt = PyDateTime_FromDateAndTime(
+        if (teptris_node_kind(n) != TEPTRIS_DATETIME_OFFSET) {
+            return PyDateTime_FromDateAndTime(
                 d.year, d.month, d.day, d.hour, d.minute, d.second,
                 (int)(d.nanosecond / 1000));
-            if (dt == NULL || teptris_node_kind(n) == TEPTRIS_DATETIME_LOCAL) {
-                return dt;
-            }
-            Py_DECREF(dt);
-            /* aware: timezone(timedelta(seconds=off)) cached per offset */
+        }
+        /* aware: build once, with the cached per-offset timezone
+         * (timezone(timedelta(seconds=off))) - no discarded naive
+         * intermediate */
+        {
             PyObject *off = PyLong_FromLong((long)d.offset_seconds);
             if (off == NULL) return NULL;
             PyObject *tz = PyDict_GetItemWithError(tep_tz_cache, off);
