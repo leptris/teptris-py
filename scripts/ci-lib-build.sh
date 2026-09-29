@@ -79,7 +79,7 @@ rem pull would leave nothing to instrument (LNK1264). Link through the
 rem cl driver with /MD: bare link omits the DLL-CRT defaults the /MD
 rem engine objects expect (__imp_realloc & friends, LNK2001).
 rem linker-only flags go after /link; cl eats everything before it
-cl /LD /MD /O2 /Fe:$SRC\bpgd\train.pyd $SRC\btrain\train_shim.obj /link /LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF /NODEFAULTLIB:libcmt.lib /EXPORT:PyInit__native /WHOLEARCHIVE:$SRC\btrain\src\teptris.lib || exit /b 1
+cl /LD /MD /O2 /Fe:$SRC\bpgd\train.pyd $SRC\btrain\train_shim.obj /link /LTCG /GENPROFILE /INCREMENTAL:NO /OPT:REF /OPT:ICF /NODEFAULTLIB:libcmt.lib /EXPORT:PyInit__native /EXPORT:teptris_parse /EXPORT:teptris_document_emit /EXPORT:teptris_document_free /WHOLEARCHIVE:$SRC\btrain\src\teptris.lib || exit /b 1
 python _pgotrain.py || exit /b 1
 rem stage the VC redist CRT beside the pyd so its dependencies resolve
 for /d %%r in ("$VSPATH"\VC\Redist\MSVC\*) do if exist "%%r\$VSARCH\Microsoft.VC143.CRT" xcopy /y "%%r\$VSARCH\Microsoft.VC143.CRT\*.dll" $SRC\bpgd\ >/dev/null
