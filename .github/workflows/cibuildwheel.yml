@@ -213,6 +213,12 @@ jobs:
         uses: pypa/cibuildwheel@v3.0.1
         env:
           CIBW_BUILD: ${{ matrix.vs_builds }}
+          CIBW_ARCHS_LINUX: ${{ matrix.archs || 'auto' }}
+          CIBW_ARCHS_MACOS: ${{ runner.arch == 'ARM64' && 'arm64' || 'x86_64' }}
+          CIBW_ARCHS_WINDOWS: ${{ runner.arch == 'ARM64' && 'ARM64' || 'AMD64' }}
+          CIBW_ENVIRONMENT: >-
+            TEPTRIS_INCLUDE=libteptris-src/src/include
+            TEPTRIS_LIBDIR=libteptris-src/build/src
           # per-OS override replaces the base env: repeat it, then the
           # windows PGO plumbing (bstatic /GL archive + trained pgd)
           CIBW_ENVIRONMENT_WINDOWS: >-
