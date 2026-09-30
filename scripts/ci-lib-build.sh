@@ -71,6 +71,8 @@ rem bplain: plain archive for the abi3 line (its distutils link has
 rem no /LTCG, and /GL objects require it)
 cmake -B $SRC\bplain -S $SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF || exit /b 1
 cmake --build $SRC\bplain || exit /b 1
+rem legacy path compat: ci.yml builds against libteptris-src/build/src
+xcopy /e /i /y $SRC\bplain $SRC\build || exit /b 1
 rem bstatic: /GL archive for the PGO-consuming version-specific link.
 rem ARM64 MSVC has NO PGO (LNK4256: not available in this edition) -
 rem fall back to the plain archive at the same path and skip training.
