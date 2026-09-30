@@ -208,11 +208,15 @@ jobs:
 
       # version-specific line (cp310-cp313, non-limited, fast
       # datetime path): separate invocation, own-interpreter tests
-      - name: cibuildwheel (cp310-cp313)
+      - name: cibuildwheel (cp310-cp314)
         if: matrix.vs_builds
         uses: pypa/cibuildwheel@v3.0.1
         env:
           CIBW_BUILD: ${{ matrix.vs_builds }}
+          # cibuildwheel 3.0.1 shipped while 3.14 was prerelease; the
+          # cp314 selector lives in the opt-in group until the action
+          # version moves. Harmless no-op on newer cibuildwheels.
+          CIBW_ENABLE: cpython-prerelease
           CIBW_ARCHS_LINUX: ${{ matrix.archs || 'auto' }}
           CIBW_ARCHS_MACOS: ${{ runner.arch == 'ARM64' && 'arm64' || 'x86_64' }}
           CIBW_ARCHS_WINDOWS: ${{ runner.arch == 'ARM64' && 'ARM64' || 'AMD64' }}
