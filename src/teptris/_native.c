@@ -33,8 +33,12 @@ shape where only a small subset of the tree is touched (teptris#79). */
 #ifdef TEPTRIS_FAST_DT
 #include <datetime.h>
 /* aware datetimes reuse one timezone object per offset: offsets are
- * bounded (~56 real zone offsets), the cache lives for the module */
+ * bounded (~56 real zone offsets), the cache lives for the module.
+ * Free-threaded (Py_GIL_DISABLED) builds need the lock: the cache is
+ * the only shared mutable state in the module, and the lookup-insert
+ * pattern is a read-modify-write. */
 static PyObject *tep_tz_cache;
+static PyThread_type_lock tep_tz_lock;
 #endif
 
 static PyObject *TomlDecodeError;
@@ -128,22 +132,39 @@ static PyObject *obj_from_node(const teptris_node *n) {
         {
             PyObject *off = PyLong_FromLong((long)d.offset_seconds);
             if (off == NULL) return NULL;
+            PyThread_acquire_lock(tep_tz_lock, WAIT_LOCK);
             PyObject *tz = PyDict_GetItemWithError(tep_tz_cache, off);
             if (tz == NULL) {
-                if (PyErr_Occurred()) { Py_DECREF(off); return NULL; }
+                if (PyErr_Occurred()) {
+                    PyThread_release_lock(tep_tz_lock);
+                    Py_DECREF(off);
+                    return NULL;
+                }
                 PyObject *delta = PyDelta_FromDSU(0, d.offset_seconds, 0);
-                if (delta == NULL) { Py_DECREF(off); return NULL; }
+                if (delta == NULL) {
+                    PyThread_release_lock(tep_tz_lock);
+                    Py_DECREF(off);
+                    return NULL;
+                }
                 tz = PyTimeZone_FromOffset(delta);
                 Py_DECREF(delta);
-                if (tz == NULL) { Py_DECREF(off); return NULL; }
+                if (tz == NULL) {
+                    PyThread_release_lock(tep_tz_lock);
+                    Py_DECREF(off);
+                    return NULL;
+                }
                 if (PyDict_SetItem(tep_tz_cache, off, tz) < 0) {
-                    Py_DECREF(tz); Py_DECREF(off); return NULL;
+                    PyThread_release_lock(tep_tz_lock);
+                    Py_DECREF(tz);
+                    Py_DECREF(off);
+                    return NULL;
                 }
                 Py_DECREF(tz); /* the dict holds the module reference */
             }
+            PyThread_release_lock(tep_tz_lock);
             Py_DECREF(off);
-            /* no AndTzinfo macro exists: the capsule struct member
-             * takes tzinfo directly (context is a legacy slot) */
+            /* tz is borrowed from the append-only cache (no eviction
+             * path exists), valid across thread scheduling */
             return PyDateTimeAPI->DateTime_FromDateAndTime(
                 d.year, d.month, d.day, d.hour, d.minute, d.second,
                 (int)(d.nanosecond / 1000), tz,
@@ -935,6 +956,8 @@ PyMODINIT_FUNC PyInit__native(void) {
     if (PyDateTimeAPI == NULL) { Py_DECREF(m); return NULL; }
     tep_tz_cache = PyDict_New();
     if (tep_tz_cache == NULL) { Py_DECREF(m); return NULL; }
+    tep_tz_lock = PyThread_allocate_lock();
+    if (tep_tz_lock == NULL) { Py_DECREF(m); return NULL; }
 #endif
     TomlDecodeError = PyErr_NewException("teptris._native.DecodeError", NULL, NULL);
     Py_INCREF(TomlDecodeError);
