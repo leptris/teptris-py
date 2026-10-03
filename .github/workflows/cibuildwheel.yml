@@ -225,12 +225,13 @@ jobs:
             TEPTRIS_LIBDIR=libteptris-src/build/src
           # windows version-specific builds consume the /GL bstatic
           # archive with the trained pgd (setup.py adds
-          # /LTCG /USEPROFILE when TEPTRIS_MSVC_PGO=1)
-          CIBW_ENVIRONMENT_WINDOWS: >-
-            TEPTRIS_INCLUDE=libteptris-src/src/include
-            TEPTRIS_LIBDIR=libteptris-src/bstatic/src
-            TEPTRIS_MSVC_PGO=1
-            TEPTRIS_PGD=libteptris-src/bpgd/train.pgd
+          # /LTCG /USEPROFILE when TEPTRIS_MSVC_PGO=1). ARM64 MSVC
+          # has NO PGO edition: VS2022 warned LNK4256 and ignored the
+          # request, but the windows-11-vs2026-arm64 image makes the
+          # missing pgd FATAL (LNK1266, run 37159686630) - ARM64
+          # links plain (ci-lib-build.sh stages bplain as bstatic
+          # there; the abi3-line link shape).
+          CIBW_ENVIRONMENT_WINDOWS: ${{ runner.arch != 'ARM64' && 'TEPTRIS_INCLUDE=libteptris-src/src/include TEPTRIS_LIBDIR=libteptris-src/bstatic/src TEPTRIS_MSVC_PGO=1 TEPTRIS_PGD=libteptris-src/bpgd/train.pgd' || 'TEPTRIS_INCLUDE=libteptris-src/src/include TEPTRIS_LIBDIR=libteptris-src/bstatic/src' }}
           CIBW_BEFORE_BUILD: >-
             rm -rf src/teptris/_engine &&
             cp -r libteptris-src/src src/teptris/_engine &&
