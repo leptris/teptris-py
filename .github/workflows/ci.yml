@@ -210,3 +210,16 @@ jobs:
           CIBW_TEST_COMMAND: >-
             python -c "import teptris; assert teptris.loads('a = 1') == {'a': 1};
             print('armv7l wheel OK')"
+
+  typing:
+    name: mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python3 -m pip install -q mypy
+      - name: Type-check the python layer (C surface via _native.pyi)
+        run: python3 -m mypy src/teptris
