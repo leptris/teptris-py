@@ -122,6 +122,9 @@ def load(fp: Union[str, bytes, BinaryIO]) -> dict[str, Any]:
         return loads(f.read())
 
 
+from .descriptor import Descriptor
+
+
 def engine_version() -> str:
     """The libteptris engine version string (the C core this wheel
     links, not the teptris package version — see importlib.metadata
@@ -129,5 +132,6 @@ def engine_version() -> str:
     return _engine_version()
 
 
-__all__ = ["TOMLDecodeError", "dumps", "load", "loads", "loads_batch",
-           "loads_lazy", "loads_lazy_batch", "engine_version", "LazyNode"]
+__all__ = ["Descriptor", "LazyNode", "TOMLDecodeError", "dumps",
+           "engine_version", "load", "loads", "loads_batch",
+           "loads_lazy", "loads_lazy_batch"]
