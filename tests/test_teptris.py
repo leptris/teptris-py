@@ -120,3 +120,28 @@ class Dumps(unittest.TestCase):
         out = teptris.dumps(obj)
         self.assertIn("\"a\\\"b\\\\c\\nd\"", out)
         self.assertEqual(teptris.loads(out), obj)
+
+
+class EngineVersion(unittest.TestCase):
+    def test_returns_engine_string(self):
+        v = teptris.engine_version()
+        self.assertIsInstance(v, str)
+        self.assertTrue(v)
+
+
+class LoadsLazyBatch(unittest.TestCase):
+    def test_parity_with_loads(self):
+        docs = ["a = 1", "[t]\nb = 2", "x = 1979-05-27T07:32:00Z"]
+        lazy = teptris.loads_lazy_batch(docs)
+        eager = [teptris.loads(d) for d in docs]
+        self.assertEqual([n.to_dict() for n in lazy], eager)
+        self.assertIsNotNone(lazy[2].to_dict()["x"].tzinfo)
+
+    def test_first_failure_raises_with_position(self):
+        with self.assertRaises(teptris.TOMLDecodeError) as ctx:
+            teptris.loads_lazy_batch(["a = 1", "bogus ="])
+        self.assertGreater(ctx.exception.line, 0)
+
+    def test_rejects_non_list(self):
+        with self.assertRaises(TypeError):
+            teptris.loads_lazy_batch("a = 1")
