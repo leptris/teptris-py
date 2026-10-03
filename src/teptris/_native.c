@@ -1071,8 +1071,12 @@ static PyObject *plan_scalar(const teptris_plan_result *res, uint32_t row) {
                 r = PyObject_CallFunctionObjArgs(
                     tep_dt_datetime, y, mo, dy, h, mi, s, us, NULL);
             } else { /* DATETIME_OFFSET */
+                /* PyDelta_FromDSU is not in the limited API (the
+                 * abi3 builds force Py_LIMITED_API) — construct via
+                 * the cached timedelta class, limited-API safe. */
                 PyObject *delta =
-                    PyDelta_FromDSU(0, (int)d.offset_seconds, 0);
+                    PyObject_CallFunction(tep_dt_timedelta, "i",
+                                          (int)d.offset_seconds);
                 PyObject *tz = delta
                     ? PyObject_CallFunctionObjArgs(tep_dt_timezone,
                                                    delta, NULL)
@@ -1157,8 +1161,12 @@ static PyObject *plan_elem_scalar(const teptris_plan_result *res,
                 r = PyObject_CallFunctionObjArgs(
                     tep_dt_datetime, y, mo, dy, h, mi, s, us, NULL);
             } else { /* DATETIME_OFFSET */
+                /* PyDelta_FromDSU is not in the limited API (the
+                 * abi3 builds force Py_LIMITED_API) — construct via
+                 * the cached timedelta class, limited-API safe. */
                 PyObject *delta =
-                    PyDelta_FromDSU(0, (int)d.offset_seconds, 0);
+                    PyObject_CallFunction(tep_dt_timedelta, "i",
+                                          (int)d.offset_seconds);
                 PyObject *tz = delta
                     ? PyObject_CallFunctionObjArgs(tep_dt_timezone,
                                                    delta, NULL)
