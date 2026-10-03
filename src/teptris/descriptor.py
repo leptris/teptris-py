@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ._native import DecodeError as _DecodeError
 from ._native import plan_build, plan_emit
 
 _KINDS = {"scalar": 1, "collection": 2, "nested": 3, "raw": 4}
@@ -66,4 +67,14 @@ class Descriptor:
         return cls(rows, first_row, handle)
 
     def walk(self, toml: str | bytes) -> dict[str, Any]:
-        return plan_emit(self._handle, toml)
+        # plan_emit raises the C-level DecodeError; every public path
+        # hands callers TOMLDecodeError with line/column instead.
+        try:
+            return plan_emit(self._handle, toml)
+        except _DecodeError as e:
+            from . import TOMLDecodeError  # call-time: no import cycle
+
+            err = TOMLDecodeError(str(e))
+            err.line = getattr(e, "line", 0)
+            err.column = getattr(e, "column", 0)
+            raise err from None
