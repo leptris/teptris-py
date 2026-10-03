@@ -145,3 +145,65 @@ class LoadsLazyBatch(unittest.TestCase):
     def test_rejects_non_list(self):
         with self.assertRaises(TypeError):
             teptris.loads_lazy_batch("a = 1")
+
+
+class DescriptorTests(unittest.TestCase):
+    def schema(self):
+        return {
+            "children": [
+                {"name": "name", "kind": "scalar"},
+                {"name": "port", "kind": "scalar"},
+                {"name": "hosts", "kind": "collection"},
+                {"name": "when", "kind": "scalar"},
+                {"name": "items", "kind": "nested", "plan": {
+                    "children": [{"name": "id", "kind": "scalar"}]}},
+                {"name": "extra", "kind": "raw"},
+            ]
+        }
+
+    DOC = (
+        'name = "svc"\n'
+        "port = 8080\n"
+        "unplanned = true\n"
+        'hosts = ["a", "b"]\n'
+        "when = 1979-05-27T07:32:00-07:00\n"
+        "[[items]]\nid = 1\n"
+        "[[items]]\nid = 2\n"
+    )
+
+    def test_planned_keys_only(self):
+        d = teptris.Descriptor.build(self.schema())
+        out = d.walk(self.DOC)
+        self.assertEqual(out["name"], "svc")
+        self.assertEqual(out["port"], 8080)
+        self.assertEqual(out["hosts"], ["a", "b"])
+        self.assertEqual([t["id"] for t in out["items"]], [1, 2])
+        self.assertNotIn("unplanned", out)
+
+    def test_absent_rows_read_none(self):
+        d = teptris.Descriptor.build(self.schema())
+        out = d.walk('name = "x"')
+        self.assertEqual(out["name"], "x")
+        self.assertIsNone(out["port"])
+        self.assertIsNone(out["hosts"])
+        self.assertIsNone(out["items"])
+
+    def test_raw_row_keeps_subtree(self):
+        d = teptris.Descriptor.build(self.schema())
+        out = d.walk(self.DOC)
+        self.assertIsNone(out["extra"])  # absent raw -> None
+        out2 = d.walk(self.DOC + '[extra]\nkey = "v"\n')
+        self.assertEqual(out2["extra"], {"key": "v"})
+
+    def test_aware_datetime_mapping(self):
+        d = teptris.Descriptor.build(self.schema())
+        out = d.walk(self.DOC)
+        self.assertIsNotNone(out["when"].tzinfo)
+        self.assertEqual(out["when"].utcoffset(),
+                         __import__("datetime").timedelta(hours=-7))
+
+    def test_bad_document_raises_with_position(self):
+        d = teptris.Descriptor.build(self.schema())
+        with self.assertRaises(teptris.TOMLDecodeError) as ctx:
+            d.walk("bogus =")
+        self.assertGreater(ctx.exception.line, 0)
