@@ -20,6 +20,7 @@ shape where only a small subset of the tree is touched (teptris#79). */
 #endif
 #include <Python.h>
 #include "teptris/teptris.h"
+#include "teptris/plan.h"
 
 /* version-specific wheels build WITHOUT the limited API: the full
  * datetime.h C-API replaces the generic-call materialization
@@ -926,6 +927,392 @@ static PyObject *ext_version(PyObject *self, PyObject *ignored) {
     return PyUnicode_FromString(teptris_version_string());
 }
 
+
+/* ----------------------------------------------------------- plan -- *
+ * Descriptor mode — the py twin of teptris-ruby's Teptris::Descriptor
+ * (teptris#46): compile a plan tree once, then materialize a TOML
+ * document against it in ONE native pass; unplanned keys are never
+ * materialized. plan_build takes the flattened spec (rows: list of
+ * [name, kind, sub]; first_row: plan_count+1 offsets) and returns an
+ * opaque capsule; plan_emit walks one document against it. */
+
+static void plan_capsule_destructor(PyObject *cap) {
+    teptris_plan *p =
+        (teptris_plan *)PyCapsule_GetPointer(cap, "teptris.plan");
+    if (p) teptris_plan_free(p);
+}
+
+static PyObject *ext_plan_build(PyObject *self, PyObject *args) {
+    (void)self;
+    PyObject *rows, *first_row;
+    if (!PyArg_ParseTuple(args, "OO", &rows, &first_row)) return NULL;
+    if (!PyList_Check(rows) || !PyList_Check(first_row)) {
+        PyErr_SetString(PyExc_TypeError, "plan_build expects two lists");
+        return NULL;
+    }
+    Py_ssize_t nrows = PyList_GET_SIZE(rows);
+    Py_ssize_t nplans = PyList_GET_SIZE(first_row) - 1;
+    if (nplans < 1 || nrows < 1) {
+        PyErr_SetString(TomlDecodeError, "plan needs >= 1 plan and >= 1 row");
+        return NULL;
+    }
+    teptris_plan_row *crows = calloc((size_t)nrows, sizeof(*crows));
+    /* (nplans+1) entries — the ruby port's byte-sized-malloc lesson */
+    uint32_t *cfirst = malloc(((size_t)nplans + 1) * sizeof(*cfirst));
+    if (!crows || !cfirst) {
+        free(crows);
+        free(cfirst);
+        return PyErr_NoMemory();
+    }
+    for (Py_ssize_t i = 0; i < nrows; i++) {
+        PyObject *row = PyList_GET_ITEM(rows, i); /* borrowed */
+        if (!PyList_Check(row) || PyList_GET_SIZE(row) < 3) {
+            goto bad_row;
+        }
+        PyObject *name = PyList_GET_ITEM(row, 0);
+        if (!PyUnicode_Check(name)) goto bad_row;
+        const char *utf8 = PyUnicode_AsUTF8(name);
+        if (!utf8) goto bad_row;
+        crows[i].name = strdup(utf8);
+        unsigned long kind = PyLong_AsUnsignedLong(PyList_GET_ITEM(row, 1));
+        unsigned long sub = PyLong_AsUnsignedLong(PyList_GET_ITEM(row, 2));
+        if (PyErr_Occurred()) goto bad_row;
+        crows[i].kind = (uint8_t)kind;
+        crows[i].sub = (uint32_t)sub;
+        continue;
+    bad_row:
+        for (Py_ssize_t j = 0; j < i; j++) free((void *)crows[j].name);
+        free(crows);
+        free(cfirst);
+        PyErr_SetString(PyExc_TypeError,
+                        "each plan row is [name, kind, sub]");
+        return NULL;
+    }
+    for (Py_ssize_t i = 0; i <= nplans; i++) {
+        unsigned long v = PyLong_AsUnsignedLong(PyList_GET_ITEM(first_row, i));
+        if (PyErr_Occurred()) {
+            for (Py_ssize_t j = 0; j < nrows; j++)
+                free((void *)crows[j].name);
+            free(crows);
+            free(cfirst);
+            return NULL;
+        }
+        cfirst[i] = (uint32_t)v;
+    }
+    teptris_plan_spec spec = {TEPTRIS_PLAN_ABI_VERSION, (uint32_t)nplans,
+                              crows, cfirst};
+    teptris_status st;
+    teptris_plan *plan = teptris_plan_build(&spec, &st);
+    for (Py_ssize_t j = 0; j < nrows; j++) free((void *)crows[j].name);
+    free(crows);
+    free(cfirst);
+    if (plan == NULL) {
+        PyErr_Format(TomlDecodeError, "invalid plan spec (status %d)",
+                     (int)st);
+        return NULL;
+    }
+    return PyCapsule_New(plan, "teptris.plan", plan_capsule_destructor);
+}
+
+/* One scalar from a plan result. Datetimes go through the cached
+ * datetime classes (limited-API safe — no PyDateTimeAPI struct use,
+ * mirroring obj_from_node's generic branch). */
+static PyObject *plan_scalar(const teptris_plan_result *res, uint32_t row) {
+    switch (teptris_plan_result_value_kind_at(res, row)) {
+    case TEPTRIS_STRING: {
+        teptris_view s;
+        if (teptris_plan_result_string_at(res, row, &s) != TEPTRIS_OK)
+            Py_RETURN_NONE;
+        return PyUnicode_DecodeUTF8(s.ptr, (Py_ssize_t)s.len, "replace");
+    }
+    case TEPTRIS_INTEGER: {
+        int64_t v = 0;
+        if (teptris_plan_result_integer_at(res, row, &v) != TEPTRIS_OK)
+            Py_RETURN_NONE;
+        return PyLong_FromLongLong(v);
+    }
+    case TEPTRIS_FLOAT: {
+        double v = 0;
+        if (teptris_plan_result_float_at(res, row, &v) != TEPTRIS_OK)
+            Py_RETURN_NONE;
+        return PyFloat_FromDouble(v);
+    }
+    case TEPTRIS_BOOLEAN: {
+        bool v = false;
+        if (teptris_plan_result_boolean_at(res, row, &v) != TEPTRIS_OK)
+            Py_RETURN_NONE;
+        return PyBool_FromLong(v ? 1 : 0);
+    }
+    default: {
+        teptris_datetime d;
+        if (teptris_plan_result_datetime_at(res, row, &d) != TEPTRIS_OK)
+            Py_RETURN_NONE;
+        uint8_t vk = teptris_plan_result_value_kind_at(res, row);
+        PyObject *r = NULL;
+        if (vk == TEPTRIS_DATE_LOCAL) {
+            r = PyObject_CallFunction(tep_dt_date, "lll",
+                                      (long)d.year, (long)d.month,
+                                      (long)d.day);
+        } else if (vk == TEPTRIS_TIME_LOCAL) {
+            r = PyObject_CallFunction(tep_dt_time, "llll",
+                                      (long)d.hour, (long)d.minute,
+                                      (long)d.second,
+                                      (long)(d.nanosecond / 1000));
+        } else {
+            PyObject *y = PyLong_FromLong(d.year);
+            PyObject *mo = PyLong_FromLong(d.month);
+            PyObject *dy = PyLong_FromLong(d.day);
+            PyObject *h = PyLong_FromLong(d.hour);
+            PyObject *mi = PyLong_FromLong(d.minute);
+            PyObject *s = PyLong_FromLong(d.second);
+            PyObject *us =
+                PyLong_FromLong((long)(d.nanosecond / 1000));
+            if (vk == TEPTRIS_DATETIME_LOCAL) {
+                r = PyObject_CallFunctionObjArgs(
+                    tep_dt_datetime, y, mo, dy, h, mi, s, us, NULL);
+            } else { /* DATETIME_OFFSET */
+                PyObject *delta =
+                    PyDelta_FromDSU(0, (int)d.offset_seconds, 0);
+                PyObject *tz = delta
+                    ? PyObject_CallFunctionObjArgs(tep_dt_timezone,
+                                                   delta, NULL)
+                    : NULL;
+                Py_XDECREF(delta);
+                if (tz) {
+                    r = PyObject_CallFunctionObjArgs(
+                        tep_dt_datetime, y, mo, dy, h, mi, s, us, tz,
+                        NULL);
+                    Py_DECREF(tz);
+                }
+            }
+            Py_XDECREF(y); Py_XDECREF(mo); Py_XDECREF(dy);
+            Py_XDECREF(h); Py_XDECREF(mi); Py_XDECREF(s);
+            Py_XDECREF(us);
+        }
+        return r;
+    }
+    }
+}
+
+/* Element accessors for COLLECTION rows — element-indexed, distinct
+ * from the row-level accessors in plan_scalar. */
+static PyObject *plan_elem_scalar(const teptris_plan_result *res,
+                                  uint32_t row, uint32_t j) {
+    switch (teptris_plan_result_array_value_kind_at(res, row, j)) {
+    case TEPTRIS_STRING: {
+        teptris_view s;
+        if (teptris_plan_result_array_string_at(res, row, j, &s) !=
+            TEPTRIS_OK)
+            Py_RETURN_NONE;
+        return PyUnicode_DecodeUTF8(s.ptr, (Py_ssize_t)s.len, "replace");
+    }
+    case TEPTRIS_INTEGER: {
+        int64_t v = 0;
+        if (teptris_plan_result_array_integer_at(res, row, j, &v) !=
+            TEPTRIS_OK)
+            Py_RETURN_NONE;
+        return PyLong_FromLongLong(v);
+    }
+    case TEPTRIS_FLOAT: {
+        double v = 0;
+        if (teptris_plan_result_array_float_at(res, row, j, &v) !=
+            TEPTRIS_OK)
+            Py_RETURN_NONE;
+        return PyFloat_FromDouble(v);
+    }
+    case TEPTRIS_BOOLEAN: {
+        bool v = false;
+        if (teptris_plan_result_array_boolean_at(res, row, j, &v) !=
+            TEPTRIS_OK)
+            Py_RETURN_NONE;
+        return PyBool_FromLong(v ? 1 : 0);
+    }
+    default: {
+        teptris_datetime d;
+        if (teptris_plan_result_array_datetime_at(res, row, j, &d) !=
+            TEPTRIS_OK)
+            Py_RETURN_NONE;
+        uint8_t vk =
+            teptris_plan_result_array_value_kind_at(res, row, j);
+        PyObject *r = NULL;
+        if (vk == TEPTRIS_DATE_LOCAL) {
+            r = PyObject_CallFunction(tep_dt_date, "lll",
+                                      (long)d.year, (long)d.month,
+                                      (long)d.day);
+        } else if (vk == TEPTRIS_TIME_LOCAL) {
+            r = PyObject_CallFunction(tep_dt_time, "llll",
+                                      (long)d.hour, (long)d.minute,
+                                      (long)d.second,
+                                      (long)(d.nanosecond / 1000));
+        } else {
+            PyObject *y = PyLong_FromLong(d.year);
+            PyObject *mo = PyLong_FromLong(d.month);
+            PyObject *dy = PyLong_FromLong(d.day);
+            PyObject *h = PyLong_FromLong(d.hour);
+            PyObject *mi = PyLong_FromLong(d.minute);
+            PyObject *s = PyLong_FromLong(d.second);
+            PyObject *us =
+                PyLong_FromLong((long)(d.nanosecond / 1000));
+            if (vk == TEPTRIS_DATETIME_LOCAL) {
+                r = PyObject_CallFunctionObjArgs(
+                    tep_dt_datetime, y, mo, dy, h, mi, s, us, NULL);
+            } else { /* DATETIME_OFFSET */
+                PyObject *delta =
+                    PyDelta_FromDSU(0, (int)d.offset_seconds, 0);
+                PyObject *tz = delta
+                    ? PyObject_CallFunctionObjArgs(tep_dt_timezone,
+                                                   delta, NULL)
+                    : NULL;
+                Py_XDECREF(delta);
+                if (tz) {
+                    r = PyObject_CallFunctionObjArgs(
+                        tep_dt_datetime, y, mo, dy, h, mi, s, us, tz,
+                        NULL);
+                    Py_DECREF(tz);
+                }
+            }
+            Py_XDECREF(y); Py_XDECREF(mo); Py_XDECREF(dy);
+            Py_XDECREF(h); Py_XDECREF(mi); Py_XDECREF(s);
+            Py_XDECREF(us);
+        }
+        return r;
+    }
+    }
+}
+
+/* Recursive assembly: one dict per plan. Array-of-tables entries and
+ * NESTED rows recurse with borrowed views (freed here, per the plan.h
+ * view contract); RAW rows convert through obj_from_node. */
+static PyObject *plan_asm(const teptris_plan *p,
+                          const teptris_plan_result *res,
+                          uint32_t plan_idx) {
+    uint32_t n = teptris_plan_row_count(p, plan_idx);
+    PyObject *h = PyDict_New();
+    if (!h) return NULL;
+    for (uint32_t i = 0; i < n; i++) {
+        PyObject *k = PyUnicode_FromString(
+            teptris_plan_row_name_at(p, plan_idx, i));
+        if (!k) { Py_DECREF(h); return NULL; }
+        PyObject *val = NULL;
+        switch (teptris_plan_result_kind_at(res, i)) {
+        case TEPTRIS_PLAN_SCALAR_RESULT:
+            val = plan_scalar(res, i);
+            break;
+        case TEPTRIS_PLAN_ARRAY: {
+            uint32_t alen = teptris_plan_result_array_len_at(res, i);
+            val = PyList_New((Py_ssize_t)alen);
+            if (!val) break;
+            for (uint32_t j = 0; j < alen; j++) {
+                PyObject *ev = NULL;
+                if (teptris_plan_result_array_kind_at(res, i, j) ==
+                    TEPTRIS_PLAN_TABLE) {
+                    teptris_plan_result *sub =
+                        teptris_plan_result_array_entry_at(res, i, j);
+                    if (sub != NULL) {
+                        ev = plan_asm(
+                            p, sub,
+                            teptris_plan_row_sub_at(p, plan_idx, i));
+                        teptris_plan_result_view_free(sub);
+                    }
+                } else {
+                    ev = plan_elem_scalar(res, i, j);
+                }
+                if (!ev) { Py_DECREF(val); val = NULL; break; }
+                Py_INCREF(ev);
+                if (PyList_SetItem(val, (Py_ssize_t)j, ev) < 0) {
+                    Py_DECREF(ev);
+                    Py_DECREF(val);
+                    val = NULL;
+                    break;
+                }
+            }
+            break;
+        }
+        case TEPTRIS_PLAN_TABLE: {
+            teptris_plan_result *sub =
+                teptris_plan_result_row_view(res, i);
+            if (sub != NULL) {
+                val = plan_asm(p, sub,
+                               teptris_plan_row_sub_at(p, plan_idx, i));
+                teptris_plan_result_view_free(sub);
+            }
+            break;
+        }
+        case TEPTRIS_PLAN_RAW_RESULT: {
+            const teptris_node *raw =
+                teptris_plan_result_raw_at(res, i);
+            if (raw != NULL) val = obj_from_node(raw);
+            break;
+        }
+        default:
+            break; /* MISSING -> None */
+        }
+        if (!val) {
+            val = Py_None;
+            Py_INCREF(val);
+        }
+        int rc = PyDict_SetItem(h, k, val);
+        Py_DECREF(k);
+        Py_DECREF(val);
+        if (rc < 0) { Py_DECREF(h); return NULL; }
+    }
+    return h;
+}
+
+static PyObject *ext_plan_emit(PyObject *self, PyObject *args) {
+    (void)self;
+    PyObject *cap, *obj;
+    if (!PyArg_ParseTuple(args, "OO", &cap, &obj)) return NULL;
+    teptris_plan *plan =
+        (teptris_plan *)PyCapsule_GetPointer(cap, "teptris.plan");
+    if (!plan) return NULL;
+    const char *data = NULL;
+    Py_ssize_t len = 0;
+    PyObject *keepalive = NULL;
+    if (PyUnicode_Check(obj)) {
+        keepalive = PyUnicode_AsUTF8String(obj);
+        if (!keepalive) return NULL;
+        data = PyBytes_AsString(keepalive);
+        len = PyBytes_Size(keepalive);
+    } else if (PyBytes_Check(obj)) {
+        data = PyBytes_AsString(obj);
+        len = PyBytes_Size(obj);
+    } else {
+        PyErr_SetString(PyExc_TypeError,
+                        "plan_emit expects str or bytes");
+        return NULL;
+    }
+    teptris_document *doc = NULL;
+    teptris_status st = teptris_parse(data, (size_t)len, NULL, &doc);
+    Py_XDECREF(keepalive);
+    if (st != TEPTRIS_OK) {
+        /* read e BEFORE the free — it points into the document */
+        const teptris_error *e = teptris_document_error(doc);
+        size_t line = e->line, column = e->column;
+        PyObject *ex =
+            PyObject_CallFunction(TomlDecodeError, "s", e->message);
+        teptris_document_free(doc);
+        if (ex) {
+            PyObject_SetAttrString(ex, "line", PyLong_FromSize_t(line));
+            PyObject_SetAttrString(ex, "column",
+                                   PyLong_FromSize_t(column));
+            PyErr_SetObject(TomlDecodeError, ex);
+        }
+        return NULL;
+    }
+    teptris_plan_result *res =
+        teptris_plan_walk(plan, teptris_document_root(doc), &st);
+    if (res == NULL) {
+        teptris_document_free(doc);
+        PyErr_SetString(TomlDecodeError, "plan walk failed");
+        return NULL;
+    }
+    PyObject *out = plan_asm(plan, res, 0);
+    teptris_plan_result_free(res);
+    teptris_document_free(doc);
+    return out;
+}
+
 static PyMethodDef methods[] = {
     {"loads", ext_load, METH_VARARGS, "Parse TOML into Python objects."},
     {"loads_batch", ext_loads_batch, METH_O,
@@ -936,6 +1323,10 @@ static PyMethodDef methods[] = {
      "Serialize a dict tree to canonical TOML via the shared emitter."},
     {"engine_version", ext_version, METH_NOARGS,
      "Return the libteptris engine version string."},
+    {"plan_build", ext_plan_build, METH_VARARGS,
+     "Compile a Descriptor plan (rows, first_row)."},
+    {"plan_emit", ext_plan_emit, METH_VARARGS,
+     "Materialize one TOML document against a plan."},
     {NULL, NULL, 0, NULL}
 };
 
