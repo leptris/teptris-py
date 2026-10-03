@@ -921,6 +921,11 @@ static PyObject *ext_dumps(PyObject *self, PyObject *args) {
     return out;
 }
 
+static PyObject *ext_version(PyObject *self, PyObject *ignored) {
+    (void)self; (void)ignored;
+    return PyUnicode_FromString(teptris_version_string());
+}
+
 static PyMethodDef methods[] = {
     {"loads", ext_load, METH_VARARGS, "Parse TOML into Python objects."},
     {"loads_batch", ext_loads_batch, METH_O,
@@ -929,6 +934,8 @@ static PyMethodDef methods[] = {
      "Parse TOML into a LazyNode; host objects materialize on access."},
     {"dumps", ext_dumps, METH_VARARGS,
      "Serialize a dict tree to canonical TOML via the shared emitter."},
+    {"engine_version", ext_version, METH_NOARGS,
+     "Return the libteptris engine version string."},
     {NULL, NULL, 0, NULL}
 };
 
