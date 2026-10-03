@@ -966,7 +966,7 @@ static PyObject *ext_plan_build(PyObject *self, PyObject *args) {
     }
     for (Py_ssize_t i = 0; i < nrows; i++) {
         PyObject *row = PyList_GetItem(rows, i); /* borrowed */
-        if (!PyList_Check(row) || PyList_GET_SIZE(row) < 3) {
+        if (!PyList_Check(row) || PyList_Size(row) < 3) {
             goto bad_row;
         }
         /* PyUnicode_AsUTF8 and the PyList_GET_* macros are not in
@@ -992,7 +992,8 @@ static PyObject *ext_plan_build(PyObject *self, PyObject *args) {
         return NULL;
     }
     for (Py_ssize_t i = 0; i <= nplans; i++) {
-        unsigned long v = PyLong_AsUnsignedLong(PyList_GET_ITEM(first_row, i));
+        unsigned long v = PyLong_AsUnsignedLong(
+            PyList_GetItem(first_row, i));
         if (PyErr_Occurred()) {
             for (Py_ssize_t j = 0; j < nrows; j++)
                 free((void *)crows[j].name);
