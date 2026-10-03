@@ -950,8 +950,8 @@ static PyObject *ext_plan_build(PyObject *self, PyObject *args) {
         PyErr_SetString(PyExc_TypeError, "plan_build expects two lists");
         return NULL;
     }
-    Py_ssize_t nrows = PyList_GET_SIZE(rows);
-    Py_ssize_t nplans = PyList_GET_SIZE(first_row) - 1;
+    Py_ssize_t nrows = PyList_Size(rows);
+    Py_ssize_t nplans = PyList_Size(first_row) - 1;
     if (nplans < 1 || nrows < 1) {
         PyErr_SetString(TomlDecodeError, "plan needs >= 1 plan and >= 1 row");
         return NULL;
@@ -965,17 +965,20 @@ static PyObject *ext_plan_build(PyObject *self, PyObject *args) {
         return PyErr_NoMemory();
     }
     for (Py_ssize_t i = 0; i < nrows; i++) {
-        PyObject *row = PyList_GET_ITEM(rows, i); /* borrowed */
+        PyObject *row = PyList_GetItem(rows, i); /* borrowed */
         if (!PyList_Check(row) || PyList_GET_SIZE(row) < 3) {
             goto bad_row;
         }
-        PyObject *name = PyList_GET_ITEM(row, 0);
+        /* PyUnicode_AsUTF8 and the PyList_GET_* macros are not in
+         * the limited API (the abi3 builds force Py_LIMITED_API). */
+        PyObject *name = PyList_GetItem(row, 0);
         if (!PyUnicode_Check(name)) goto bad_row;
-        const char *utf8 = PyUnicode_AsUTF8(name);
-        if (!utf8) goto bad_row;
-        crows[i].name = strdup(utf8);
-        unsigned long kind = PyLong_AsUnsignedLong(PyList_GET_ITEM(row, 1));
-        unsigned long sub = PyLong_AsUnsignedLong(PyList_GET_ITEM(row, 2));
+        PyObject *name_utf8 = PyUnicode_AsUTF8String(name);
+        if (!name_utf8) goto bad_row;
+        crows[i].name = strdup(PyBytes_AsString(name_utf8));
+        Py_DECREF(name_utf8);
+        unsigned long kind = PyLong_AsUnsignedLong(PyList_GetItem(row, 1));
+        unsigned long sub = PyLong_AsUnsignedLong(PyList_GetItem(row, 2));
         if (PyErr_Occurred()) goto bad_row;
         crows[i].kind = (uint8_t)kind;
         crows[i].sub = (uint32_t)sub;
@@ -1075,8 +1078,8 @@ static PyObject *plan_scalar(const teptris_plan_result *res, uint32_t row) {
                  * abi3 builds force Py_LIMITED_API) — construct via
                  * the cached timedelta class, limited-API safe. */
                 PyObject *delta =
-                    PyObject_CallFunction(tep_dt_timedelta, "i",
-                                          (int)d.offset_seconds);
+                    PyObject_CallFunction(tep_dt_timedelta, "iii",
+                                          0, (int)d.offset_seconds, 0);
                 PyObject *tz = delta
                     ? PyObject_CallFunctionObjArgs(tep_dt_timezone,
                                                    delta, NULL)
@@ -1165,8 +1168,8 @@ static PyObject *plan_elem_scalar(const teptris_plan_result *res,
                  * abi3 builds force Py_LIMITED_API) — construct via
                  * the cached timedelta class, limited-API safe. */
                 PyObject *delta =
-                    PyObject_CallFunction(tep_dt_timedelta, "i",
-                                          (int)d.offset_seconds);
+                    PyObject_CallFunction(tep_dt_timedelta, "iii",
+                                          0, (int)d.offset_seconds, 0);
                 PyObject *tz = delta
                     ? PyObject_CallFunctionObjArgs(tep_dt_timezone,
                                                    delta, NULL)
