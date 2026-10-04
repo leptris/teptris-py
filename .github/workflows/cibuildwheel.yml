@@ -203,24 +203,16 @@ jobs:
             libteptris-src libteptris-src/build libteptris-src/bench-corpus
           CIBW_TEST_COMMAND: >-
             import teptris, threading;
-            doc = 'x = 1979-05-27T07:32:00-07:00
-y = 1979-05-27T07:32:00+05:30';
+            doc = 'x = 1979-05-27T07:32:00-07:00\ny = 1979-05-27T07:32:00+05:30';
             d = teptris.loads(doc);
             assert d['x'].utcoffset().total_seconds() == -25200;
             assert d['y'].utcoffset().total_seconds() == 19800;
             ts = [threading.Thread(target=teptris.loads, args=(doc,)) for _ in range(200)];
             [t.start() for t in ts];
             [t.join() for t in ts];
-            o = teptris.loads('t = 07:32
-[m]
-k = 1.5
-');
+            o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n');
             assert teptris.loads(teptris.dumps(o)) == o;
             print('smoke+hammer ok')
-
-      # version-specific line (cp310-cp313, non-limited, fast
-      # datetime path): separate invocation, own-interpreter tests
-      - name: cibuildwheel (cp310-cp314)
         if: matrix.vs_builds
         uses: pypa/cibuildwheel@v3.0.1
         env:
@@ -258,22 +250,16 @@ k = 1.5
             libteptris-src libteptris-src/build libteptris-src/bench-corpus
           CIBW_TEST_COMMAND: >-
             import teptris, threading;
-            doc = 'x = 1979-05-27T07:32:00-07:00
-y = 1979-05-27T07:32:00+05:30';
+            doc = 'x = 1979-05-27T07:32:00-07:00\ny = 1979-05-27T07:32:00+05:30';
             d = teptris.loads(doc);
             assert d['x'].utcoffset().total_seconds() == -25200;
             assert d['y'].utcoffset().total_seconds() == 19800;
             ts = [threading.Thread(target=teptris.loads, args=(doc,)) for _ in range(200)];
             [t.start() for t in ts];
             [t.join() for t in ts];
-            o = teptris.loads('t = 07:32
-[m]
-k = 1.5
-');
+            o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n');
             assert teptris.loads(teptris.dumps(o)) == o;
             print('smoke+hammer ok')
-
-      - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}-${{ strategy.job-index }}
           path: wheelhouse/*.whl
