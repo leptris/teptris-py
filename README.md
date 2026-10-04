@@ -105,6 +105,38 @@ Same datetime contract as `loads()`. The eager path is the floor for
 "flatten everything" workloads; the lazy path is the win for "parse
 once, touch a small subset."
 
+## Descriptor (planned-key materialization)
+
+`teptris.Descriptor` (the twin of teptris-ruby's `Teptris::Descriptor`)
+compiles a plan tree once, then materializes a whole document against it
+in one native pass — unplanned keys are never materialized:
+
+```python
+desc = teptris.Descriptor.build({"children": [
+    {"name": "name", "kind": "scalar"},
+    {"name": "port", "kind": "scalar"},
+    {"name": "hosts", "kind": "collection"},          # array of scalars
+    {"name": "items", "kind": "nested", "plan": {     # recurses; spans
+        "children": [{"name": "id", "kind": "scalar"}]},  # arrays of tables
+    {"name": "everything_else", "kind": "raw"},       # untouched subtree
+]})
+doc = desc.walk(toml_string)
+# {"name": "svc", "port": 8080, "hosts": [...], "items": [{"id": 1}, ...],
+#  "everything_else": {...} or None}
+```
+
+Rows absent from the document read as `None`; keys not in the plan never
+appear. `walk` raises `TOMLDecodeError` with `line`/`column` like every
+other public path.
+
+## Typing
+
+The package ships `py.typed` (PEP 561) with a `_native.pyi` stub for the
+C surface — `mypy`/`pyright` strict consumers type-check out of the box,
+and a `mypy` gate runs in CI. `teptris.engine_version()` reports the
+linked libteptris version (the C core, not the package version).
+`teptris.loads_lazy_batch([...])` is the lazy twin of `loads_batch`.
+
 ## Development
 
 `setup.py` links the engine statically when it finds
