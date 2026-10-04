@@ -116,8 +116,14 @@ def loads_lazy_batch(docs: Sequence[TomlInput]) -> list[LazyNode]:
 
 
 def load(fp: Union[str, bytes, BinaryIO]) -> dict[str, Any]:
-    if hasattr(fp, "read"):
-        return loads(fp.read())  # type: ignore[union-attr]
+    read = getattr(fp, "read", None)
+    if read is not None:
+        # text streams return str; encode like the other entry points
+        data = read()
+        if isinstance(data, str):
+            data = data.encode("utf-8")
+        return loads(data)
+    # str | bytes here at runtime; BinaryIO never reaches open()
     with open(fp, "rb") as f:  # type: ignore[arg-type]
         return loads(f.read())
 
