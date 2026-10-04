@@ -213,6 +213,7 @@ jobs:
             o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n');
             assert teptris.loads(teptris.dumps(o)) == o;
             print('smoke+hammer ok')
+      - name: cibuildwheel (cp310-cp314)
         if: matrix.vs_builds
         uses: pypa/cibuildwheel@v3.0.1
         env:
@@ -260,6 +261,7 @@ jobs:
             o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n');
             assert teptris.loads(teptris.dumps(o)) == o;
             print('smoke+hammer ok')
+      - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}-${{ strategy.job-index }}
           path: wheelhouse/*.whl
