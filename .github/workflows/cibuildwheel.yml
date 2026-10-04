@@ -202,7 +202,7 @@ jobs:
             TEPTRIS_PGO_LTO=1 bash libteptris-src/scripts/build-pgo.sh
             libteptris-src libteptris-src/build libteptris-src/bench-corpus
           CIBW_TEST_COMMAND: >-
-            import teptris, threading;
+            python -c "import teptris, threading;
             doc = 'x = 1979-05-27T07:32:00-07:00\ny = 1979-05-27T07:32:00+05:30';
             d = teptris.loads(doc);
             assert d['x'].utcoffset().total_seconds() == -25200;
@@ -212,7 +212,7 @@ jobs:
             [t.join() for t in ts];
             o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n');
             assert teptris.loads(teptris.dumps(o)) == o;
-            print('smoke+hammer ok')
+            print('smoke+hammer ok')"
       - name: cibuildwheel (cp310-cp314)
         if: matrix.vs_builds
         uses: pypa/cibuildwheel@v3.0.1
@@ -250,7 +250,7 @@ jobs:
             TEPTRIS_PGO_LTO=1 bash libteptris-src/scripts/build-pgo.sh
             libteptris-src libteptris-src/build libteptris-src/bench-corpus
           CIBW_TEST_COMMAND: >-
-            import teptris, threading;
+            python -c "import teptris, threading;
             doc = 'x = 1979-05-27T07:32:00-07:00\ny = 1979-05-27T07:32:00+05:30';
             d = teptris.loads(doc);
             assert d['x'].utcoffset().total_seconds() == -25200;
@@ -260,7 +260,7 @@ jobs:
             [t.join() for t in ts];
             o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n');
             assert teptris.loads(teptris.dumps(o)) == o;
-            print('smoke+hammer ok')
+            print('smoke+hammer ok')"
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}-${{ strategy.job-index }}
