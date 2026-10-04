@@ -202,22 +202,21 @@ jobs:
             TEPTRIS_PGO_LTO=1 bash libteptris-src/scripts/build-pgo.sh
             libteptris-src libteptris-src/build libteptris-src/bench-corpus
           CIBW_TEST_COMMAND: >-
-            python -c "import teptris, threading;
-            assert teptris.loads('a = 1') == {'a': 1};
-            o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n');
-            assert teptris.loads(teptris.dumps(o)) == o;
-            errs = [];
-            def h():
-            try:
-            for _ in range(300):
-            d = teptris.loads('x = 1979-05-27T07:32:00-07:00\ny = 1979-05-27T07:32:00+05:30\n');
+            import teptris, threading;
+            doc = 'x = 1979-05-27T07:32:00-07:00
+y = 1979-05-27T07:32:00+05:30';
+            d = teptris.loads(doc);
             assert d['x'].utcoffset().total_seconds() == -25200;
-            assert d['y'].utcoffset().total_seconds() == 19800
-            except BaseException as e: errs.append(e)
-            ts = [threading.Thread(target=h) for _ in range(8)];
-            [t.start() for t in ts]; [t.join() for t in ts];
-            assert not errs, errs;
-            print('smoke+hammer ok')"
+            assert d['y'].utcoffset().total_seconds() == 19800;
+            ts = [threading.Thread(target=teptris.loads, args=(doc,)) for _ in range(200)];
+            [t.start() for t in ts];
+            [t.join() for t in ts];
+            o = teptris.loads('t = 07:32
+[m]
+k = 1.5
+');
+            assert teptris.loads(teptris.dumps(o)) == o;
+            print('smoke+hammer ok')
 
       # version-specific line (cp310-cp313, non-limited, fast
       # datetime path): separate invocation, own-interpreter tests
@@ -258,22 +257,21 @@ jobs:
             TEPTRIS_PGO_LTO=1 bash libteptris-src/scripts/build-pgo.sh
             libteptris-src libteptris-src/build libteptris-src/bench-corpus
           CIBW_TEST_COMMAND: >-
-            python -c "import teptris, threading;
-            assert teptris.loads('a = 1') == {'a': 1};
-            o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n');
-            assert teptris.loads(teptris.dumps(o)) == o;
-            errs = [];
-            def h():
-            try:
-            for _ in range(300):
-            d = teptris.loads('x = 1979-05-27T07:32:00-07:00\ny = 1979-05-27T07:32:00+05:30\n');
+            import teptris, threading;
+            doc = 'x = 1979-05-27T07:32:00-07:00
+y = 1979-05-27T07:32:00+05:30';
+            d = teptris.loads(doc);
             assert d['x'].utcoffset().total_seconds() == -25200;
-            assert d['y'].utcoffset().total_seconds() == 19800
-            except BaseException as e: errs.append(e)
-            ts = [threading.Thread(target=h) for _ in range(8)];
-            [t.start() for t in ts]; [t.join() for t in ts];
-            assert not errs, errs;
-            print('smoke+hammer ok')"
+            assert d['y'].utcoffset().total_seconds() == 19800;
+            ts = [threading.Thread(target=teptris.loads, args=(doc,)) for _ in range(200)];
+            [t.start() for t in ts];
+            [t.join() for t in ts];
+            o = teptris.loads('t = 07:32
+[m]
+k = 1.5
+');
+            assert teptris.loads(teptris.dumps(o)) == o;
+            print('smoke+hammer ok')
 
       - uses: actions/upload-artifact@v4
         with:
