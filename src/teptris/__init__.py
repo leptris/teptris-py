@@ -10,7 +10,13 @@ host objects materialize only along the paths actually accessed.
 """
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from typing import Any, BinaryIO, Sequence, Union
+
+try:
+    __version__ = _pkg_version("teptris")
+except PackageNotFoundError:  # running from a source tree
+    __version__ = "0.0.0.dev0"
 
 from ._native import LazyNode
 from ._native import DecodeError as _DecodeError
