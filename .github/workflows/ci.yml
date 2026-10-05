@@ -223,3 +223,8 @@ jobs:
         run: python3 -m pip install -q mypy
       - name: Type-check the python layer (C surface via _native.pyi)
         run: python3 -m mypy src/teptris
+
+      - name: Ruff
+        run: |
+          python3 -m pip install -q ruff
+          python3 -m ruff check src/ tests/
