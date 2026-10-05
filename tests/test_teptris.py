@@ -3,7 +3,7 @@ import sys
 import unittest
 
 sys.path.insert(0, "src")
-import teptris  # noqa: E402
+import teptris
 
 try:
     import tomli
