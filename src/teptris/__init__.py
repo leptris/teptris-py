@@ -10,17 +10,18 @@ host objects materialize only along the paths actually accessed.
 """
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError, version as _pkg_version
-from typing import Any, BinaryIO, Sequence, Union
+from collections.abc import Sequence
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+from typing import Any, BinaryIO, Union
 
 try:
     __version__ = _pkg_version("teptris")
 except PackageNotFoundError:  # running from a source tree
     __version__ = "0.0.0.dev0"
 
-from ._native import LazyNode
 from ._native import DecodeError as _DecodeError
-from ._native import dumps
+from ._native import LazyNode, dumps
 from ._native import engine_version as _engine_version
 from ._native import loads as _loads
 from ._native import loads_batch as _loads_batch
@@ -121,7 +122,7 @@ def loads_lazy_batch(docs: Sequence[TomlInput]) -> list[LazyNode]:
     return [loads_lazy(d) for d in docs]
 
 
-def load(fp: Union[str, bytes, BinaryIO]) -> dict[str, Any]:
+def load(fp: str | bytes | BinaryIO) -> dict[str, Any]:
     read = getattr(fp, "read", None)
     if read is not None:
         # text streams return str; encode like the other entry points
