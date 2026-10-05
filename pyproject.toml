@@ -24,3 +24,10 @@ teptris = ["py.typed", "*.pyi", "_platform/**/*", "*.so", "*.so.*", "*.dylib", "
            "_engine/src/teptris/*.c", "_engine/src/teptris/*/*.c", "_engine/src/teptris/*/*/*.c",
            "_engine/src/teptris/*.h", "_engine/src/teptris/*/*.h", "_engine/src/teptris/*/*/*.h",
            "_engine/src/include/teptris/*.h"]
+
+[tool.ruff]
+target-version = "py39"
+
+[tool.ruff.lint.per-file-ignores]
+# naive datetimes are part of the contract under test (tomllib parity)
+"tests/**" = ["DTZ"]
