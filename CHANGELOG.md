@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.27 (2026-10-05)
+
+- `teptris.__version__` — the installed package version (from
+  importlib.metadata; `"0.0.0.dev0"` when running from a source tree).
+- `[project.urls]` — Repository / Changelog / Issues links on PyPI.
+- `CHANGELOG.md` shipped in the repo (this file).
+- CI: every wheel's smoke now runs a 200-thread parse hammer (tz-cache
+  under threads on every platform; GIL-disabled on the cp314t wheels).
+
 ## 0.2.26 (2026-10-04)
 
 - `teptris.Descriptor` — planned-key materialization (the twin of
