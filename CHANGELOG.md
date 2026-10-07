@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.28 (2026-10-07)
+
+- Style/lint cleanup of the python layer (ruff, #110): import
+  ordering, `collections.abc` imports, PEP 604 unions in annotations
+  and the `_native.pyi` stub — no behavior changes.
+- CI: ruff gate beside mypy; every wheel's smoke includes the
+  200-thread parse hammer (tz-cache under threads; GIL-disabled on
+  the free-threaded wheels).
+
 ## 0.2.27 (2026-10-05)
 
 - `teptris.__version__` — the installed package version (from
