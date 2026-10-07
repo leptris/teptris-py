@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0.0 (2026-10-07)
+
+- **Versioning realignment**: this and future versions follow the
+  family law `{engine version}.{binding iteration}` — the version
+  declares the engine shipped inside (0.3.0.0 = libteptris 0.3.0,
+  first binding build). The engine pin across all workflows moves
+  to v0.3.0.
+- Carries libteptris 0.3.0 (natural-JSON emit mode in the engine
+  API) plus this binding's 0.2.27/0.2.28 content (typing, Descriptor,
+  engine_version, loads_lazy_batch, lint cleanup).
+
 ## 0.2.28 (2026-10-07)
 
 - Style/lint cleanup of the python layer (ruff, #110): import
