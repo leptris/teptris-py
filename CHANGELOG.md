@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0.1 (2026-10-09)
+
+- `dumps_json_natural(obj)` — natural-JSON emit for hosts (engine
+  0.3.0's fastest emit mode): real numbers, booleans, RFC 3339
+  datetime strings, non-finite floats as `None`. Shared builder
+  phase with `dumps`; typed in `_native.pyi`; the ruby twin shipped
+  as teptris-ruby 0.3.0.2.
+
 ## 0.3.0.0 (2026-10-07)
 
 - **Versioning realignment**: this and future versions follow the
