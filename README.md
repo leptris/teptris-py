@@ -9,7 +9,12 @@ tomllib: aware/naive `datetime`, `date`, `time`.
 
 Both directions are native: `dumps` walks the object tree in C
 through the builder API and emits via the shared engine emitter —
-3.5×–14.2× faster than tomli_w on every benchmark shape. The engine
+3.5×–14.2× faster than tomli_w on every benchmark shape.
+
+`dumps_json_natural(obj)` emits the host JSON view instead of TOML
+(engine 0.3.0): real numbers, booleans, RFC 3339 datetime strings,
+non-finite floats as `null` — feedable straight into `json.loads`,
+and the engine's fastest emit mode. The engine
 implements the TOML 1.1 draft grammar (a strict superset of 1.0)
 with 100% toml-test conformance, and parses at ≥3× the best C/C++
 competitor on every shape.
