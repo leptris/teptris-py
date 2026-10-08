@@ -2,7 +2,10 @@
 
 Native extension over libteptris (C11 TOML 1.1 grammar), no fallback. API shape
 mirrors tomllib/tomli: loads(str|bytes) -> dict raising TOMLDecodeError;
-dumps(obj) -> str in the tomli_w spirit. Datetime mapping mirrors
+dumps(obj) -> str in the tomli_w spirit, and dumps_json_natural(obj)
+-> str for the host JSON view (real numbers, booleans, RFC 3339
+datetime strings, non-finite floats as null — engine 0.3.0's
+fastest emit mode). Datetime mapping mirrors
 tomllib: aware/naive datetime, date, time.
 
 Lazy twin: loads_lazy(str|bytes) -> LazyNode (teptris#79) — one parse,
@@ -21,7 +24,7 @@ except PackageNotFoundError:  # running from a source tree
     __version__ = "0.0.0.dev0"
 
 from ._native import DecodeError as _DecodeError
-from ._native import LazyNode, dumps
+from ._native import LazyNode, dumps, dumps_json_natural
 from ._native import engine_version as _engine_version
 from ._native import loads as _loads
 from ._native import loads_batch as _loads_batch
@@ -146,5 +149,5 @@ def engine_version() -> str:
 
 
 __all__ = ["Descriptor", "LazyNode", "TOMLDecodeError", "dumps",
-           "engine_version", "load", "loads", "loads_batch",
-           "loads_lazy", "loads_lazy_batch"]
+           "dumps_json_natural", "engine_version", "load", "loads",
+           "loads_batch", "loads_lazy", "loads_lazy_batch"]

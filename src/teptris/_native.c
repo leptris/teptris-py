@@ -889,10 +889,9 @@ static int build_table(teptris_builder *b, PyObject *obj) {
     return rc;
 }
 
-static PyObject *ext_dumps(PyObject *self, PyObject *args) {
-    (void)self;
-    PyObject *obj;
-    if (!PyArg_ParseTuple(args, "O", &obj)) return NULL;
+static PyObject *dumps_with(PyObject *obj,
+                             teptris_status (*emit)(const teptris_document *,
+                                                    char **, size_t *)) {
     if (!PyDict_Check(obj)) {
         PyErr_SetString(PyExc_TypeError,
                         "dumps() expects a dict at the top level");
@@ -913,13 +912,30 @@ static PyObject *ext_dumps(PyObject *self, PyObject *args) {
     }
     char *buf = NULL;
     size_t len = 0;
-    st = teptris_document_emit(doc, &buf, &len);
+    st = emit(doc, &buf, &len);
     teptris_document_free(doc);
     teptris_builder_free(b); /* finish() transferred (and freed) the doc */
     if (st != TEPTRIS_OK) return PyErr_NoMemory();
     PyObject *out = PyUnicode_DecodeUTF8(buf, (Py_ssize_t)len, "strict");
     free(buf);
     return out;
+}
+
+static PyObject *ext_dumps(PyObject *self, PyObject *args) {
+    (void)self;
+    PyObject *obj;
+    if (!PyArg_ParseTuple(args, "O", &obj)) return NULL;
+    return dumps_with(obj, teptris_document_emit);
+}
+
+/* Natural JSON (engine 0.3.0): real numbers, booleans, RFC 3339
+ * datetime strings — the mappings dumps_json_natural documents.
+ * Non-finite floats become null. */
+static PyObject *ext_dumps_json_natural(PyObject *self, PyObject *args) {
+    (void)self;
+    PyObject *obj;
+    if (!PyArg_ParseTuple(args, "O", &obj)) return NULL;
+    return dumps_with(obj, teptris_document_emit_json_natural);
 }
 
 static PyObject *ext_version(PyObject *self, PyObject *ignored) {
@@ -1333,6 +1349,9 @@ static PyMethodDef methods[] = {
      "Parse TOML into a LazyNode; host objects materialize on access."},
     {"dumps", ext_dumps, METH_VARARGS,
      "Serialize a dict tree to canonical TOML via the shared emitter."},
+    {"dumps_json_natural", ext_dumps_json_natural, METH_VARARGS,
+     "Serialize a dict tree to natural JSON (real numbers, booleans, "
+     "RFC 3339 datetimes, non-finite floats as null)."},
     {"engine_version", ext_version, METH_NOARGS,
      "Return the libteptris engine version string."},
     {"plan_build", ext_plan_build, METH_VARARGS,
