@@ -72,7 +72,7 @@ jobs:
       - name: Gate (HEAD must be >= 90% of the published wheel)
         run: |
           set -e
-          for m in load_small load_medium dump_medium; do
+          for m in load_small load_medium dump_medium dump_json_natural_medium; do
             p=$(awk -v m="$m" '$2==m && $1=="prev" {print $3}' prev.txt)
             h=$(awk -v m="$m" '$2==m && $1=="head" {print $3}' head.txt)
             ratio=$(awk -v h="$h" -v p="$p" 'BEGIN { printf "%.3f", h/p }')
