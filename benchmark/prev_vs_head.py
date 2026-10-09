@@ -53,4 +53,6 @@ def alloc_peak(op):
 print(f"{label} load_small {ops_per_second(lambda: teptris.loads(SMALL)):.1f}")
 print(f"{label} load_medium {ops_per_second(lambda: teptris.loads(MEDIUM)):.1f}")
 print(f"{label} dump_medium {ops_per_second(lambda: teptris.dumps(MEDIUM_OBJ)):.1f}")
+print(f"{label} dump_json_natural_medium "
+      f"{ops_per_second(lambda: teptris.dumps_json_natural(MEDIUM_OBJ)):.1f}")
 print(f"{label} alloc_peak_load_medium {alloc_peak(lambda: teptris.loads(MEDIUM))}")
