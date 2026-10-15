@@ -32,8 +32,8 @@ jobs:
   sdist:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - run: bash scripts/make-sdist.sh
@@ -41,14 +41,14 @@ jobs:
       # 0.2.15 broken-sdist class must die here, not on users
       # (absolute paths slipped past a 3.12-only verification once)
       - name: Self-test the sdist (3.9, strict)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.9'
       - run: |
           python3 -m pip install -q virtualenv
           python3 -m virtualenv /tmp/sdt && /tmp/sdt/bin/python -m pip install -q dist/*.tar.gz
           /tmp/sdt/bin/python -c "import teptris; assert teptris.loads('a = 1') == {'a': 1}; print('sdist self-test OK')"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/*.tar.gz
@@ -64,12 +64,12 @@ jobs:
     if: always() && !cancelled() && !failure()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: wheels-*
           path: artifacts
           merge-multiple: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: sdist
           path: artifacts
@@ -133,16 +133,16 @@ jobs:
           - { os: windows-latest,    builds: cp39-win_amd64, vs_builds: cp310-win_amd64 cp311-win_amd64 cp312-win_amd64 cp313-win_amd64 cp314-win_amd64 cp314t-win_amd64 }
           - { os: windows-11-arm,    builds: cp39-win_arm64, vs_builds: cp310-win_arm64 cp311-win_arm64 cp312-win_arm64 cp313-win_arm64 cp314-win_arm64 cp314t-win_arm64 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Checkout libteptris (the C core)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: leptris/teptris
           path: libteptris-src
           ref: v0.3.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -261,7 +261,7 @@ jobs:
             o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n');
             assert teptris.loads(teptris.dumps(o)) == o;
             print('smoke+hammer ok')"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheels-${{ matrix.os }}-${{ strategy.job-index }}
           path: wheelhouse/*.whl

@@ -22,16 +22,16 @@ jobs:
     name: previous wheel vs HEAD (regression gate)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Checkout libteptris (the C core)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: leptris/teptris
           path: libteptris-src
           ref: v0.3.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
