@@ -218,10 +218,11 @@ jobs:
         uses: pypa/cibuildwheel@v4.3.1
         env:
           CIBW_BUILD: ${{ matrix.vs_builds }}
-          # cibuildwheel 3.0.1 shipped while 3.14 was prerelease; the
-          # cp314/cp314t selectors live in opt-in groups until the
-          # action version moves. Harmless no-ops on newer cibuildwheels.
-          CIBW_ENABLE: cpython-prerelease cpython-freethreading
+          # cibuildwheel v4 REMOVED the cpython-freethreading enable
+          # group: 3.14t builds by default (the cp314t selectors need
+          # no opt-in anymore). cpython-prerelease stays for future
+          # 3.15 betas; it selects nothing in these vs_builds.
+          CIBW_ENABLE: cpython-prerelease
           CIBW_ARCHS_LINUX: ${{ matrix.archs || 'auto' }}
           CIBW_ARCHS_MACOS: ${{ runner.arch == 'ARM64' && 'arm64' || 'x86_64' }}
           CIBW_ARCHS_WINDOWS: ${{ runner.arch == 'ARM64' && 'ARM64' || 'AMD64' }}
