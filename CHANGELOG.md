@@ -1,8 +1,19 @@
 # Changelog
 
-## 0.3.1.0 (2026-10-16)
+## 0.3.1.1 (2026-10-16)
 
-- First build of the libteptris **0.3.1** engine line (the 0.3.1
+- **Corrected engine build**: carries libteptris **0.3.1** for real —
+  the 0.3.1.0 train built from the v0.3.0 engine pin while the
+  version declared 0.3.1 (the family law: the version declares the
+  engine inside). All workflow engine pins move to v0.3.1.
+- 0.3.1.0 is a wrong-engine twin and a yank candidate (owner call).
+- CI: **pypa/cibuildwheel v3.0.1 → v4.3.1** — the last stale major
+  in the family's lanes, verified by the 0.3.1.0 train (26/26 green;
+  v4 removed the cpython-freethreading enable group).
+
+## 0.3.1.0 (2026-10-16, WRONG-ENGINE TWIN — yank candidate)
+
+- Intended as the first libteptris **0.3.1** build but the wheel lane's v0.3.0 pin made it carry engine 0.3.0 (the 0.3.1
   bump is CLI tooling — the library surface is unchanged from
   0.3.0, so bindings are behavior-identical).
 - CI: **pypa/cibuildwheel v3.0.1 → v4.3.1** — the last stale major
