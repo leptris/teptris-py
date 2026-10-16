@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1.0 (2026-10-16)
+
+- First build of the libteptris **0.3.1** engine line (the 0.3.1
+  bump is CLI tooling — the library surface is unchanged from
+  0.3.0, so bindings are behavior-identical).
+- CI: **pypa/cibuildwheel v3.0.1 → v4.3.1** — the last stale major
+  in the family's lanes, verified by this full train.
+
 ## 0.3.0.1 (2026-10-09)
 
 - `dumps_json_natural(obj)` — natural-JSON emit for hosts (engine
