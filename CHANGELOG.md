@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.3.1 (2026-10-18)
+
+- **Engine v0.3.3** — all five workflow pins move from v0.3.1 to
+  v0.3.3, carrying the plan depth cap (engine v0.3.2:
+  `teptris_plan_build` rejects plans deeper than 512 instead of
+  overflowing the stack) and the dom clone NULL-memcpy UB guards
+  (engine v0.3.3, found by the new fuzz_dump harness). Family law:
+  the pin moves in the release PR — version = {engine 0.3.3}.{iteration 1}.
+
 ## 0.3.1.1 (2026-10-16)
 
 - **Corrected engine build**: carries libteptris **0.3.1** for real —
