@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.4.1 (2026-10-18)
+
+- **Engine v0.3.4** — all five workflow pins move from v0.3.3 to
+  v0.3.4: `teptris_plan_build` no longer writes debug output to stderr
+  (the v0.3.2 depth gate shipped an unguarded DBG fprintf — one line
+  per plan row in every host). Family law: pin moves in the release
+  PR — version = {engine 0.3.4}.{iteration 1}.
+
 ## 0.3.3.1 (2026-10-18)
 
 - **Engine v0.3.3** — all five workflow pins move from v0.3.1 to
