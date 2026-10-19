@@ -1,5 +1,9 @@
 # teptris-py — TOML for Python at libleptris speed
 
+**Mission: be the best TOML parser and builder ever made — in C, Ruby,
+Rust, and JS — measured, not claimed.** The bar and the family ledger:
+[BEST-EVER.md](https://github.com/leptris/teptris/blob/main/BEST-EVER.md).
+
 A native C-extension binding (no ctypes, no fallback) over
 [libteptris](https://github.com/leptris/teptris) — the TOML counterpart
 of leptris-py (XML) and yeptris-py (YAML). API shape mirrors
