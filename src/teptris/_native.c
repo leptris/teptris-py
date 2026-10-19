@@ -921,11 +921,364 @@ static PyObject *dumps_with(PyObject *obj,
     return out;
 }
 
+/* ---------------- writer path (fused dumps, no DOM) ----------------
+ * The dict walk encodes the writer op-stream directly: one pass over
+ * the host objects, valid TOML out of teptris_writer_finish - the
+ * builder DOM + document_emit round-trip is gone. Section ordering:
+ * TOML forbids keys after a sub-table header, so each dict is walked
+ * twice (scalars, then containers); output value order within a table
+ * is scalar-first by contract. */
+
+typedef struct {
+    uint8_t *p;
+    size_t len, cap;
+    int err; /* 1 = alloc failure */
+} obuf;
+
+static void ob_reserve(obuf *b, size_t extra) {
+    if (b->err) return;
+    if (b->len + extra <= b->cap) return;
+    size_t ncap = b->cap ? b->cap : 256;
+    while (b->len + extra > ncap) ncap *= 2;
+    uint8_t *np = PyMem_Realloc(b->p, ncap);
+    if (!np) { b->err = 1; return; }
+    b->p = np;
+    b->cap = ncap;
+}
+
+static void ob_put(obuf *b, const void *s, size_t n) {
+    ob_reserve(b, n);
+    if (!b->err) {
+        memcpy(b->p + b->len, s, n);
+        b->len += n;
+    }
+}
+
+static void ob_byte(obuf *b, uint8_t c) { ob_put(b, &c, 1); }
+
+static void ob_key(obuf *b, const char *k, size_t klen) {
+    ob_byte(b, 0x01);
+    ob_byte(b, (uint8_t)klen);
+    if (klen) ob_put(b, k, klen);
+}
+
+static void ob_u32(obuf *b, uint32_t v) {
+    ob_put(b, &(uint8_t){(uint8_t)v}, 1);
+    ob_put(b, &(uint8_t){(uint8_t)(v >> 8)}, 1);
+    ob_put(b, &(uint8_t){(uint8_t)(v >> 16)}, 1);
+    ob_put(b, &(uint8_t){(uint8_t)(v >> 24)}, 1);
+}
+
+static void ob_i64(obuf *b, int64_t v) {
+    ob_reserve(b, 8);
+    if (b->err) return;
+    uint64_t u;
+    memcpy(&u, &v, 8);
+    for (int i = 0; i < 8; i++) b->p[b->len + i] = (uint8_t)(u >> (8 * i));
+    b->len += 8;
+}
+
+static void ob_dt(obuf *b, uint8_t kind, const teptris_datetime *dt) {
+    ob_reserve(b, 27); /* 1 op + 1 kind + i64 year + 5 + u32 ns + i64 off */
+    if (b->err) return;
+    uint8_t *o = b->p + b->len;
+    o[0] = 0x07;
+    o[1] = kind;
+    int64_t yr = dt->year, off = dt->offset_seconds;
+    uint64_t u;
+    memcpy(&u, &yr, 8);
+    for (int i = 0; i < 8; i++) o[2 + i] = (uint8_t)(u >> (8 * i));
+    o[10] = dt->month;
+    o[11] = dt->day;
+    o[12] = dt->hour;
+    o[13] = dt->minute;
+    o[14] = dt->second;
+    memcpy(o + 15, &dt->nanosecond, 4);
+    memcpy(&u, &off, 8);
+    for (int i = 0; i < 8; i++) o[19 + i] = (uint8_t)(u >> (8 * i));
+    b->len += 27;
+}
+
+static int w_scalar(obuf *b, const char *key, size_t klen, PyObject *v) {
+    ob_key(b, key, klen);
+    if (PyBool_Check(v)) {
+        ob_byte(b, v == Py_True ? 0x06 : 0x05);
+        return 0;
+    }
+    if (PyLong_Check(v)) {
+        long long i = PyLong_AsLongLong(v);
+        if (i == -1 && PyErr_Occurred()) return -1;
+        ob_byte(b, 0x03);
+        ob_i64(b, (int64_t)i);
+        return 0;
+    }
+    if (PyFloat_Check(v)) {
+        double d = PyFloat_AsDouble(v);
+        if (d == -1.0 && PyErr_Occurred()) return -1;
+        ob_byte(b, 0x04);
+        uint64_t u;
+        memcpy(&u, &d, 8);
+        for (int i = 0; i < 8; i++) ob_byte(b, (uint8_t)(u >> (8 * i)));
+        return 0;
+    }
+    if (PyUnicode_Check(v)) {
+        PyObject *kb = PyUnicode_AsUTF8String(v);
+        if (!kb) return -1;
+        ob_byte(b, 0x02);
+        ob_u32(b, (uint32_t)PyBytes_Size(kb));
+        ob_put(b, PyBytes_AsString(kb), (size_t)PyBytes_Size(kb));
+        Py_DECREF(kb);
+        return 0;
+    }
+    /* datetime first: datetime subclasses date - mirror put_scalar's
+     * classification, emit the writer op instead of builder calls */
+    if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_datetime)) {
+        teptris_datetime dt;
+        memset(&dt, 0, sizeof(dt));
+#ifdef TEPTRIS_FAST_DT
+        dt.year = (int32_t)PyDateTime_GET_YEAR(v);
+        dt.month = (uint8_t)PyDateTime_GET_MONTH(v);
+        dt.day = (uint8_t)PyDateTime_GET_DAY(v);
+        dt.hour = (uint8_t)PyDateTime_DATE_GET_HOUR(v);
+        dt.minute = (uint8_t)PyDateTime_DATE_GET_MINUTE(v);
+        dt.second = (uint8_t)PyDateTime_DATE_GET_SECOND(v);
+        dt.nanosecond =
+            (uint32_t)PyDateTime_DATE_GET_MICROSECOND(v) * 1000u;
+        PyObject *tz = PyDateTime_DATE_GET_TZINFO(v); /* borrowed */
+        if (tz == Py_None) {
+            ob_dt(b, 5, &dt); /* TEPTRIS_DATETIME_LOCAL */
+            return 0;
+        }
+        PyObject *off = PyObject_CallMethod(tz, "utcoffset", "O", v);
+        if (!off) return -1;
+        if (off != Py_None && PyDelta_Check(off)) {
+            dt.offset_seconds = PyDateTime_DELTA_GET_DAYS(off) * 86400 +
+                                PyDateTime_DELTA_GET_SECONDS(off);
+        }
+        Py_DECREF(off);
+        ob_dt(b, 4, &dt); /* TEPTRIS_DATETIME_OFFSET */
+        return 0;
+#else
+        dt.year = (int32_t)attr_long(v, "year");
+        dt.month = (uint8_t)attr_long(v, "month");
+        dt.day = (uint8_t)attr_long(v, "day");
+        dt.hour = (uint8_t)attr_long(v, "hour");
+        dt.minute = (uint8_t)attr_long(v, "minute");
+        dt.second = (uint8_t)attr_long(v, "second");
+        dt.nanosecond = (uint32_t)attr_long(v, "microsecond") * 1000u;
+        PyObject *tz = dt_tzinfo(v);
+        if (tz == Py_None) {
+            Py_DECREF(tz);
+            ob_dt(b, 5, &dt);
+            return 0;
+        }
+        PyObject *off = PyObject_CallMethod(tz, "utcoffset", "O", v);
+        Py_DECREF(tz);
+        if (!off) return -1;
+        if (off != Py_None) {
+            dt.offset_seconds =
+                attr_long(off, "days") * 86400 + attr_long(off, "seconds");
+        }
+        Py_DECREF(off);
+        ob_dt(b, 4, &dt);
+        return 0;
+#endif
+    }
+    if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_date)) {
+        teptris_datetime dt;
+        memset(&dt, 0, sizeof(dt));
+#ifdef TEPTRIS_FAST_DT
+        dt.year = (int32_t)PyDateTime_GET_YEAR(v);
+        dt.month = (uint8_t)PyDateTime_GET_MONTH(v);
+        dt.day = (uint8_t)PyDateTime_GET_DAY(v);
+#else
+        dt.year = (int32_t)attr_long(v, "year");
+        dt.month = (uint8_t)attr_long(v, "month");
+        dt.day = (uint8_t)attr_long(v, "day");
+#endif
+        ob_dt(b, 6, &dt); /* TEPTRIS_DATE_LOCAL */
+        return 0;
+    }
+    if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_time)) {
+        teptris_datetime dt;
+        memset(&dt, 0, sizeof(dt));
+#ifdef TEPTRIS_FAST_DT
+        dt.hour = (uint8_t)PyDateTime_TIME_GET_HOUR(v);
+        dt.minute = (uint8_t)PyDateTime_TIME_GET_MINUTE(v);
+        dt.second = (uint8_t)PyDateTime_TIME_GET_SECOND(v);
+        dt.nanosecond =
+            (uint32_t)PyDateTime_TIME_GET_MICROSECOND(v) * 1000u;
+#else
+        dt.hour = (uint8_t)attr_long(v, "hour");
+        dt.minute = (uint8_t)attr_long(v, "minute");
+        dt.second = (uint8_t)attr_long(v, "second");
+        dt.nanosecond = (uint32_t)attr_long(v, "microsecond") * 1000u;
+#endif
+        ob_dt(b, 7, &dt); /* TEPTRIS_TIME_LOCAL */
+        return 0;
+    }
+    PyErr_Format(PyExc_TypeError, "cannot dump %.200R",
+                 (PyObject *)Py_TYPE(v));
+    return -1;
+}
+
+static int w_value(obuf *b, PyObject *v);
+
+static int w_table_members(obuf *b, PyObject *obj);
+static int w_table_scalars(obuf *b, PyObject *obj);
+
+static int w_list(obuf *b, PyObject *v) {
+    if (Py_EnterRecursiveCall(" while dumping a list")) return -1;
+    Py_ssize_t n = PyList_Size(v);
+    int rc = 0;
+    for (Py_ssize_t i = 0; rc == 0 && i < n; i++) {
+        PyObject *el = PyList_GetItem(v, i);
+        if (PyDict_Check(el)) {
+            ob_byte(b, 0x0B); /* inline table */
+            rc = w_table_scalars(b, el);
+            if (rc == 0) rc = w_table_members(b, el);
+            if (rc == 0) ob_byte(b, 0x0C);
+        } else if (PyList_Check(el)) {
+            ob_byte(b, 0x09);
+            rc = w_list(b, el);
+            if (rc == 0) ob_byte(b, 0x0C);
+        } else {
+            rc = w_scalar(b, NULL, 0, el);
+        }
+    }
+    Py_LeaveRecursiveCall();
+    return rc;
+}
+
+/* a nested table: that dict's scalars first, then its sub-tables */
+static int w_table_full(obuf *b, PyObject *obj) {
+    int rc = w_table_scalars(b, obj);
+    if (rc == 0) rc = w_table_members(b, obj);
+    return rc;
+}
+
+static int w_container_value(obuf *b, PyObject *v) {
+    if (Py_EnterRecursiveCall(" while dumping a container")) return -1;
+    int rc = 0;
+    if (PyDict_Check(v)) {
+        ob_byte(b, 0x08);
+        rc = w_table_full(b, v);
+        if (rc == 0) ob_byte(b, 0x0C);
+    } else if (PyList_Check(v)) {
+        Py_ssize_t n = PyList_Size(v);
+        bool all_dict = n > 0;
+        for (Py_ssize_t i = 0; i < n; i++) {
+            if (!PyDict_Check(PyList_GetItem(v, i))) {
+                all_dict = false;
+                break;
+            }
+        }
+        if (n == 0) {
+            ob_byte(b, 0x0E); /* empty array */
+            rc = 0;
+        } else if (all_dict) {
+            ob_byte(b, 0x0A); /* AOT */
+            for (Py_ssize_t i = 0; rc == 0 && i < n; i++) {
+                ob_byte(b, 0x08); /* element */
+                rc = w_table_full(b, PyList_GetItem(v, i));
+                if (rc == 0) ob_byte(b, 0x0C);
+            }
+            ob_byte(b, 0x0C); /* close AOT */
+        } else {
+            ob_byte(b, 0x09); /* inline array */
+            rc = w_list(b, v);
+            if (rc == 0) ob_byte(b, 0x0C);
+        }
+    } else {
+        rc = w_scalar(b, NULL, 0, v);
+    }
+    Py_LeaveRecursiveCall();
+    return rc;
+}
+
+/* pass 2: dicts and lists (section containers) */
+static int w_table_members(obuf *b, PyObject *obj) {
+    if (Py_EnterRecursiveCall(" while dumping a table")) return -1;
+    PyObject *k, *v;
+    Py_ssize_t pos = 0;
+    int rc = 0;
+    while (rc == 0 && PyDict_Next(obj, &pos, &k, &v)) {
+        if (!PyUnicode_Check(k)) {
+            PyErr_SetString(PyExc_TypeError, "keys must be strings");
+            rc = -1;
+            break;
+        }
+        if (PyDict_Check(v) || PyList_Check(v)) {
+            PyObject *kb = PyUnicode_AsUTF8String(k);
+            if (!kb) { rc = -1; break; }
+            ob_key(b, PyBytes_AsString(kb), (size_t)PyBytes_Size(kb));
+            Py_DECREF(kb);
+            rc = w_container_value(b, v);
+        }
+    }
+    Py_LeaveRecursiveCall();
+    return rc;
+}
+
+static int w_table_scalars(obuf *b, PyObject *obj) {
+    PyObject *k, *v;
+    Py_ssize_t pos = 0;
+    int rc = 0;
+    while (rc == 0 && PyDict_Next(obj, &pos, &k, &v)) {
+        if (!PyUnicode_Check(k)) {
+            PyErr_SetString(PyExc_TypeError, "keys must be strings");
+            rc = -1;
+            break;
+        }
+        if (PyDict_Check(v) || PyList_Check(v)) continue;
+        PyObject *kb = PyUnicode_AsUTF8String(k);
+        if (!kb) { rc = -1; break; }
+        rc = w_scalar(b, PyBytes_AsString(kb),
+                      (size_t)PyBytes_Size(kb), v);
+        Py_DECREF(kb);
+    }
+    return rc;
+}
+
+static PyObject *dumps_writer(PyObject *obj) {
+    if (!PyDict_Check(obj)) {
+        PyErr_SetString(PyExc_TypeError,
+                        "dumps() expects a dict at the top level");
+        return NULL;
+    }
+    obuf b = {NULL, 0, 0, 0};
+    int rc = w_table_scalars(&b, obj);
+    if (rc == 0) rc = w_table_members(&b, obj);
+    if (rc == 0) {
+        ob_byte(&b, 0x00); /* END */
+        teptris_writer *w = teptris_writer_new();
+        if (!w) {
+            PyMem_Free(b.p);
+            return PyErr_NoMemory();
+        }
+        teptris_status st = teptris_writer_feed(w, b.p, b.len);
+        char *buf = NULL;
+        size_t len = 0;
+        if (st == TEPTRIS_OK) st = teptris_writer_finish(w, &buf, &len);
+        teptris_writer_free(w);
+        PyMem_Free(b.p);
+        if (st != TEPTRIS_OK) {
+            PyErr_SetString(PyExc_TypeError, teptris_status_string(st));
+            return NULL;
+        }
+        PyObject *out = PyUnicode_DecodeUTF8(buf, (Py_ssize_t)len, "strict");
+        free(buf);
+        return out;
+    }
+    PyMem_Free(b.p);
+    return NULL;
+}
+
 static PyObject *ext_dumps(PyObject *self, PyObject *args) {
     (void)self;
     PyObject *obj;
     if (!PyArg_ParseTuple(args, "O", &obj)) return NULL;
-    return dumps_with(obj, teptris_document_emit);
+    return dumps_writer(obj); /* fused writer path: no DOM */
 }
 
 /* Natural JSON (engine 0.3.0): real numbers, booleans, RFC 3339
