@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.5.1 (2026-10-20)
+
+- **Fused dumps**: `dumps` now walks the dict once into the engine's
+  new streaming writer (v0.3.5) — no builder DOM, no second walk.
+  Tier result vs rtoml.dumps: wins 5/9 on the corpus (datetime_heavy
+  1.6×, scalar_string 1.4×, table_heavy, cargo_like, deep_tables);
+  rtoml keeps the flat-scalar shapes (scalar_int 1.5×) — the honest
+  gap cell stays open with the per-value-walk lever documented.
+- Wheels built from the v0.3.5 engine pin (all five workflows, same
+  PR per the family law).
+
 ## 0.3.4.1 (2026-10-18)
 
 - **Engine v0.3.4** — all five workflow pins move from v0.3.3 to
