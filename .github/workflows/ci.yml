@@ -211,6 +211,28 @@ jobs:
             python -c "import teptris; assert teptris.loads('a = 1') == {'a': 1};
             print('armv7l wheel OK')"
 
+  differential:
+    name: binding differential vs tomllib
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: leptris/teptris
+          ref: v0.3.6
+          path: engine
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Build the engine + install the binding
+        run: |
+          cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release             -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON             -DTEPTRIS_BUILD_CLI=OFF -DBUILD_TESTING=OFF
+          cmake --build engine/build -j
+          TEPTRIS_INCLUDE=$PWD/engine/src/include           TEPTRIS_LIBDIR=$PWD/engine/build/src           pip install . --no-build-isolation
+      - name: Differential over the checked-in corpus
+        run: python3 scripts/diff_tomllib.py test/corpus
+
   typing:
     name: mypy
     runs-on: ubuntu-latest
