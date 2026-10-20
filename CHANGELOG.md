@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.6.4 (2026-10-20)
+
+- **abi3 audit cleanliness**: the borrowed-key experiment
+  (PyUnicode_AsUTF8/AsUTF8AndSize) is withdrawn - neither symbol is in
+  the cp39-abi3 set (abi3audit --strict rejects both; the 0.3.6.2 and
+  0.3.6.3 trains failed their audit cells and shipped nothing). dumps
+  keys use the allocating AsUTF8String, the abi3-clean form every
+  published release has used. Flat-scalar dumps stay at the
+  0.3.6.1 standing; the per-key allocation is part of the abi3
+  contract's price.
+
 ## 0.3.6.1 (2026-10-20)
 
 - **Fused dumps**: `dumps` now walks the dict once into the engine's
