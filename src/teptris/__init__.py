@@ -27,6 +27,8 @@ from ._native import DecodeError as _DecodeError
 from ._native import LazyNode, dumps, dumps_json_natural
 from ._native import engine_version as _engine_version
 from ._native import loads as _loads
+from ._native import loads_doc as _loads_doc
+from ._native import dumps_doc as _dumps_doc
 from ._native import loads_batch as _loads_batch
 from ._native import loads_lazy as _loads_lazy
 
@@ -46,6 +48,23 @@ def _decode_error(e: _DecodeError) -> TOMLDecodeError:
     err.line = getattr(e, "line", 0)
     err.column = getattr(e, "column", 0)
     return err
+
+
+def loads_doc(data: TomlInput) -> Any:
+    """Parse into a RETAINED engine document (a opaque handle; no
+    Python objects are materialized). Pair with dumps_doc() for a
+    roundtrip that runs entirely at C speed - reserialization of an
+    unchanged document skips both host-object walks."""
+    if isinstance(data, str):
+        data = data.encode()
+    if not isinstance(data, (bytes, bytearray)):
+        raise TypeError("loads_doc() expects str or bytes")
+    return _loads_doc(bytes(data))
+
+
+def dumps_doc(doc: Any) -> str:
+    """Emit a loads_doc() document at C speed."""
+    return _dumps_doc(doc)
 
 
 def loads(data: TomlInput) -> dict[str, Any]:

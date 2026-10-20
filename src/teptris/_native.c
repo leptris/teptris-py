@@ -1697,12 +1697,99 @@ static PyObject *ext_plan_emit(PyObject *self, PyObject *args) {
     return out;
 }
 
+/* ---------------- native-doc API: the retained DOM ----------------
+ * loads_doc parses straight into an engine document held behind a
+ * PyCapsule; dumps_doc serializes that document with the C emitter
+ * (264-768 MB/s) - no Python objects are materialized on either side.
+ * The roundtrip dumps_doc(loads_doc(s)) runs at pure C speed. The
+ * capsule destructor owns the document; a doc cannot outlive its
+ * capsule. */
+
+/* the doc's keys/values are views into its parse input - the capsule
+ * owns BOTH the document and a private copy of the input */
+typedef struct {
+    teptris_document *doc;
+    char *input;
+} held_doc;
+
+static void doc_capsule_destructor(PyObject *cap) {
+    held_doc *h =
+        (held_doc *)PyCapsule_GetPointer(cap, "teptris.document");
+    if (h != NULL) {
+        if (h->doc != NULL) teptris_document_free(h->doc);
+        free(h->input);
+        free(h);
+    }
+}
+
+static PyObject *ext_loads_doc(PyObject *self, PyObject *args) {
+    (void)self;
+    const char *data;
+    Py_ssize_t len;
+    if (!PyArg_ParseTuple(args, "y#", &data, &len)) return NULL;
+    held_doc *h = malloc(sizeof(*h));
+    if (h == NULL) return PyErr_NoMemory();
+    h->input = malloc((size_t)len);
+    if (h->input == NULL) {
+        free(h);
+        return PyErr_NoMemory();
+    }
+    memcpy(h->input, data, (size_t)len);
+    h->doc = NULL;
+    teptris_status st = teptris_parse(h->input, (size_t)len, NULL, &h->doc);
+    if (st != TEPTRIS_OK || h->doc == NULL) {
+        if (h->doc != NULL) {
+            const teptris_error *e = teptris_document_error(h->doc);
+            PyErr_Format(TomlDecodeError, "%s (line %d, column %d)",
+                         e->message, (int)e->line, (int)e->column);
+            teptris_document_free(h->doc);
+        } else {
+            PyErr_NoMemory();
+        }
+        free(h->input);
+        free(h);
+        return NULL;
+    }
+    PyObject *cap = PyCapsule_New(h, "teptris.document",
+                                  doc_capsule_destructor);
+    if (cap == NULL) {
+        teptris_document_free(h->doc);
+        free(h->input);
+        free(h);
+        return NULL;
+    }
+    return cap;
+}
+
+static PyObject *ext_dumps_doc(PyObject *self, PyObject *cap) {
+    (void)self;
+    held_doc *h = (held_doc *)PyCapsule_GetPointer(cap, "teptris.document");
+    if (h == NULL || h->doc == NULL) {
+        PyErr_SetString(PyExc_TypeError,
+                        "dumps_doc() expects a loads_doc() document");
+        return NULL;
+    }
+    teptris_document *doc = h->doc;
+    char *buf = NULL;
+    size_t len = 0;
+    teptris_status st = teptris_document_emit(doc, &buf, &len);
+    if (st != TEPTRIS_OK) return PyErr_NoMemory();
+    PyObject *out = PyUnicode_DecodeUTF8(buf, (Py_ssize_t)len, "strict");
+    free(buf);
+    return out;
+}
+
 static PyMethodDef methods[] = {
     {"loads", ext_load, METH_VARARGS, "Parse TOML into Python objects."},
     {"loads_batch", ext_loads_batch, METH_O,
      "Parse a list of TOML documents in one C call."},
     {"loads_lazy", ext_lazy_load, METH_VARARGS,
      "Parse TOML into a LazyNode; host objects materialize on access."},
+    {"loads_doc", ext_loads_doc, METH_VARARGS,
+     "loads_doc(bytes) -> doc: parse into a retained engine document "
+     "(no Python objects); pair with dumps_doc."},
+    {"dumps_doc", ext_dumps_doc, METH_O,
+     "dumps_doc(doc) -> str: emit a loads_doc() document at C speed."},
     {"dumps", ext_dumps, METH_VARARGS,
      "Serialize a dict tree to canonical TOML via the shared emitter."},
     {"dumps_json_natural", ext_dumps_json_natural, METH_VARARGS,
