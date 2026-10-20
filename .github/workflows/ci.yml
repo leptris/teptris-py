@@ -229,6 +229,7 @@ jobs:
         run: |
           cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release             -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON             -DTEPTRIS_BUILD_CLI=OFF -DBUILD_TESTING=OFF
           cmake --build engine/build -j
+          python -m pip install --upgrade pip setuptools
           TEPTRIS_INCLUDE=$PWD/engine/src/include           TEPTRIS_LIBDIR=$PWD/engine/build/src           pip install . --no-build-isolation
       - name: Differential over the checked-in corpus
         run: python3 scripts/diff_tomllib.py test/corpus
