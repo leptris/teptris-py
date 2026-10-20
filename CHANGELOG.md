@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.6.5 (2026-10-20)
+
+- **Native-doc API**: `loads_doc(bytes)` parses into a retained engine
+  document (a PyCapsule handle; no Python objects are materialized)
+  and `dumps_doc(doc)` emits it with the C emitter. The roundtrip runs
+  at pure C speed: **9/9 vs rtoml's dict roundtrip, 3.0-10.1x per
+  shape** on the corpus (datetime_heavy 3.49 vs 35.12 ms). The capsule
+  owns a private copy of the parse input - the document's keys/values
+  are views into it.
+- The dict API (`loads`/`dumps`) is unchanged; the native path serves
+  the reserialize-without-mutation shape.
+
 ## 0.3.6.4 (2026-10-20)
 
 - **abi3 audit cleanliness**: the borrowed-key experiment
