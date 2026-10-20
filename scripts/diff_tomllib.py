@@ -17,7 +17,7 @@ except ModuleNotFoundError:  # py<3.11 dev hosts
     import tomli as tomllib
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-import teptris  # noqa: E402
+import teptris
 
 
 def norm(v):
