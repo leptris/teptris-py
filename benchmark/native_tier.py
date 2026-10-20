@@ -12,8 +12,9 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-import teptris  # noqa: E402
-import rtoml  # noqa: E402
+import rtoml
+
+import teptris
 
 corpus = Path(sys.argv[1] if len(sys.argv) > 1
               else "../teptris/bench-corpus")
