@@ -1209,10 +1209,11 @@ static int w_table_members(obuf *b, PyObject *obj) {
             break;
         }
         if (PyDict_Check(v) || PyList_Check(v)) {
-            Py_ssize_t klen = 0;
-            const char *ks = PyUnicode_AsUTF8AndSize(k, &klen);
+            const char *ks = PyUnicode_AsUTF8(k); /* stable ABI (the
+                AndSize variant is 3.10+; abi3audit --strict rejects it
+                on cp39 wheels) */
             if (!ks) { rc = -1; break; }
-            ob_key(b, ks, (size_t)klen);
+            ob_key(b, ks, strlen(ks));
             rc = w_container_value(b, v);
         }
     }
@@ -1231,10 +1232,9 @@ static int w_table_scalars(obuf *b, PyObject *obj) {
             break;
         }
         if (PyDict_Check(v) || PyList_Check(v)) continue;
-        Py_ssize_t klen = 0;
-        const char *ks = PyUnicode_AsUTF8AndSize(k, &klen);
+        const char *ks = PyUnicode_AsUTF8(k);
         if (!ks) { rc = -1; break; }
-        rc = w_scalar(b, ks, (size_t)klen, v);
+        rc = w_scalar(b, ks, strlen(ks), v);
     }
     return rc;
 }
