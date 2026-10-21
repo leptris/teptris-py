@@ -1002,6 +1002,31 @@ static void ob_dt(obuf *b, uint8_t kind, const teptris_datetime *dt) {
     b->len += 27;
 }
 
+/* Borrowed UTF-8 access for dump keys and string values. The
+ * zero-copy read (PyUnicode_AsUTF8AndSize) is 3.10+ and outside the
+ * cp39-abi3 symbol set, so the two live behind Py_LIMITED_API: the
+ * version-specific wheels (cp310+, built WITHOUT the define) take the
+ * no-allocation path; the abi3 wheel compiles it out entirely (the
+ * symbol never appears in its TU - abi3audit --strict stays clean)
+ * and keeps the allocating AsUTF8String. */
+#ifdef Py_LIMITED_API
+static const char *w_key_borrow(PyObject *k, Py_ssize_t *len,
+                                PyObject **tmp) {
+    *tmp = PyUnicode_AsUTF8String(k);
+    if (!*tmp) return NULL;
+    *len = PyBytes_Size(*tmp);
+    return PyBytes_AsString(*tmp);
+}
+#define W_KEY_RELEASE(tmp) Py_DECREF(tmp)
+#else
+static const char *w_key_borrow(PyObject *k, Py_ssize_t *len,
+                                PyObject **tmp) {
+    *tmp = NULL;
+    return PyUnicode_AsUTF8AndSize(k, len);
+}
+#define W_KEY_RELEASE(tmp) ((void)0)
+#endif
+
 static int w_scalar(obuf *b, const char *key, size_t klen, PyObject *v) {
     ob_key(b, key, klen);
     if (PyBool_Check(v)) {
@@ -1025,12 +1050,14 @@ static int w_scalar(obuf *b, const char *key, size_t klen, PyObject *v) {
         return 0;
     }
     if (PyUnicode_Check(v)) {
-        PyObject *kb = PyUnicode_AsUTF8String(v);
-        if (!kb) return -1;
+        Py_ssize_t n;
+        PyObject *tmp;
+        const char *p = w_key_borrow(v, &n, &tmp);
+        if (!p) return -1;
         ob_byte(b, 0x02);
-        ob_u32(b, (uint32_t)PyBytes_Size(kb));
-        ob_put(b, PyBytes_AsString(kb), (size_t)PyBytes_Size(kb));
-        Py_DECREF(kb);
+        ob_u32(b, (uint32_t)n);
+        ob_put(b, p, (size_t)n);
+        W_KEY_RELEASE(tmp);
         return 0;
     }
     /* datetime first: datetime subclasses date - mirror put_scalar's
@@ -1212,13 +1239,12 @@ static int w_table_members(obuf *b, PyObject *obj) {
             break;
         }
         if (PyDict_Check(v) || PyList_Check(v)) {
-            /* PyUnicode_AsUTF8/AsUTF8AndSize are 3.10+ - NOT in the
-             * cp39-abi3 symbol set (abi3audit --strict rejects both);
-             * the allocating AsUTF8String is the abi3-clean borrow */
-            PyObject *kb = PyUnicode_AsUTF8String(k);
-            if (!kb) { rc = -1; break; }
-            ob_key(b, PyBytes_AsString(kb), (size_t)PyBytes_Size(kb));
-            Py_DECREF(kb);
+            Py_ssize_t klen;
+            PyObject *ktmp;
+            const char *ks = w_key_borrow(k, &klen, &ktmp);
+            if (!ks) { rc = -1; break; }
+            ob_key(b, ks, (size_t)klen);
+            W_KEY_RELEASE(ktmp);
             rc = w_container_value(b, v);
         }
     }
@@ -1237,11 +1263,12 @@ static int w_table_scalars(obuf *b, PyObject *obj) {
             break;
         }
         if (PyDict_Check(v) || PyList_Check(v)) continue;
-        PyObject *kb = PyUnicode_AsUTF8String(k);
-        if (!kb) { rc = -1; break; }
-        rc = w_scalar(b, PyBytes_AsString(kb),
-                      (size_t)PyBytes_Size(kb), v);
-        Py_DECREF(kb);
+        Py_ssize_t klen;
+        PyObject *ktmp;
+        const char *ks = w_key_borrow(k, &klen, &ktmp);
+        if (!ks) { rc = -1; break; }
+        rc = w_scalar(b, ks, (size_t)klen, v);
+        W_KEY_RELEASE(ktmp);
     }
     return rc;
 }

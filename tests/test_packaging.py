@@ -35,7 +35,11 @@ class PackagingDoctrineTest(unittest.TestCase):
         src = (glob.glob(os.path.join(engine, "src", "teptris", "*.c"))
                + glob.glob(os.path.join(engine, "src", "teptris", "*", "*.c"))
                + glob.glob(os.path.join(engine, "src", "teptris", "*", "*", "*.c")))
-        self.assertGreaterEqual(len(src), 20, f"only {len(src)} engine sources under {engine}")
+        # stub-detection level, NOT a count contract: the engine's
+        # file layout consolidates across versions (20+ at the time
+        # this was written, 15 today) and the threshold must not rot
+        # with it - the assertion exists to catch a vendored stub.
+        self.assertGreaterEqual(len(src), 10, f"only {len(src)} engine sources under {engine}")
         self.assertTrue(os.path.exists(os.path.join(engine, "LICENSE.md")),
                         "engine LICENSE missing from the wheel install")
 
