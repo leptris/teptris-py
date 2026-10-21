@@ -265,11 +265,14 @@ static PyObject *ext_load(PyObject *self, PyObject *args) {
          * allocator surfaced this as line=0; 3.12 masked it) */
         const teptris_error *e = teptris_document_error(doc);
         size_t line = e->line, column = e->column;
+        size_t span_start = e->start_offset, span_end = e->end_offset;
         PyObject *ex = PyObject_CallFunction(TomlDecodeError, "s", e->message);
         teptris_document_free(doc);
         if (ex) {
             PyObject_SetAttrString(ex, "line", PyLong_FromSize_t(line));
             PyObject_SetAttrString(ex, "column", PyLong_FromSize_t(column));
+            PyObject_SetAttrString(ex, "span",
+                Py_BuildValue("(nn)", span_start, span_end));
             PyErr_SetObject(TomlDecodeError, ex);
         }
         return NULL;

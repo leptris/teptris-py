@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.7.1 (2026-10-21)
+
+- **Error spans (E5)**: TOMLDecodeError gains `.span` — the
+  machine-readable byte-offset range `(start, end)` of the offending
+  position (point spans carry start == end), carried end-to-end from
+  the v0.3.7 engine's `teptris_error`. Tooling can now anchor
+  diagnostics without reparsing.
+- Pins move to v0.3.7 in the same PR (family law) — version =
+  {engine 0.3.7}.{iteration 1}.
+
 ## 0.3.6.5 (2026-10-20)
 
 - **Native-doc API**: `loads_doc(bytes)` parses into a retained engine

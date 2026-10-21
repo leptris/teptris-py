@@ -37,16 +37,20 @@ TomlInput = Union[str, bytes, bytearray]
 
 class TOMLDecodeError(_DecodeError, ValueError):
     """Raised on malformed input. Carries ``line`` / ``column`` (1-based)
-    for the failure position; 0 when the engine could not attribute one."""
+    for the failure position; 0 when the engine could not attribute one.
+    ``span`` is the machine-readable byte-offset range of the offending
+    position ``(start, end)`` - point spans carry start == end (E5)."""
 
     line: int
     column: int
+    span: tuple[int, int]
 
 
 def _decode_error(e: _DecodeError) -> TOMLDecodeError:
     err = TOMLDecodeError(str(e))
     err.line = getattr(e, "line", 0)
     err.column = getattr(e, "column", 0)
+    err.span = getattr(e, "span", (0, 0))
     return err
 
 
