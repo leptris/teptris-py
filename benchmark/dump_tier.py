@@ -38,9 +38,11 @@ for path in sorted(corpus.glob("*.toml")):
     rdoc = rtoml.loads(src)
     tdoc = tomlkit.parse(src)
     cells = []
+    import tomli_w
     for name, fn, obj in [
         ("teptris", teptris.dumps, doc),
         ("rtoml", rtoml.dumps, rdoc),
+        ("tomli-w", tomli_w.dumps, doc),
         ("tomlkit", tomlkit.dumps, tdoc),
     ]:
         ms = bench(fn, obj)

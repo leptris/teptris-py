@@ -60,6 +60,11 @@ for path in sorted(corpus.glob("*.toml")):
         libs.append(("tomlkit", lambda b: tomlkit.parse(b.decode("utf-8"))))
     if rtoml is not None:
         libs.append(("rtoml", lambda b: rtoml.loads(b.decode("utf-8"))))
+    try:
+        import qtoml
+        libs.append(("qtoml", lambda b: qtoml.loads(b.decode("utf-8"))))
+    except ImportError:
+        pass
     for name, fn in libs:
         try:
             ms = bench(fn, src)
