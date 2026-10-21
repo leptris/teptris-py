@@ -35,18 +35,18 @@ jobs:
         with:
           python-version: '3.12'
 
-      # plain static build (non-PGO): this lane gates the BINDING;
-      # engine-side perf has the teptris repo's A/B lane
-      - name: Build the C archive (plain)
+      # PGO+LTO — the exact config the linux wheel cells build. A
+      # plain (non-PGO) HEAD loses ~10% on engine-bound shapes
+      # (dump_medium 0.894-0.897 vs the 0.90 gate: structurally under,
+      # both runs red since the lane landed) and the comparison would
+      # measure the build config, not the binding.
+      - name: Build the C archive (PGO, the wheel config)
         run: |
           set -eux
           python3 -m pip install -q cmake ninja
-          cmake -B libteptris-src/build -S libteptris-src \
-            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
-            -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF \
-            -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF \
-            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-          cmake --build libteptris-src/build -j
+          python3 libteptris-src/scripts/gen_bench_corpus.py libteptris-src/bench-corpus
+          TEPTRIS_PGO_LTO=1 bash libteptris-src/scripts/build-pgo.sh \
+            libteptris-src libteptris-src/build libteptris-src/bench-corpus
 
       - name: Install HEAD into venv A
         run: |
