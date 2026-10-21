@@ -25,11 +25,11 @@ except PackageNotFoundError:  # running from a source tree
 
 from ._native import DecodeError as _DecodeError
 from ._native import LazyNode, dumps, dumps_json_natural
+from ._native import dumps_doc as _dumps_doc
 from ._native import engine_version as _engine_version
 from ._native import loads as _loads
-from ._native import loads_doc as _loads_doc
-from ._native import dumps_doc as _dumps_doc
 from ._native import loads_batch as _loads_batch
+from ._native import loads_doc as _loads_doc
 from ._native import loads_lazy as _loads_lazy
 
 TomlInput = Union[str, bytes, bytearray]
