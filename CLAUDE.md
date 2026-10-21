@@ -16,7 +16,9 @@ ledger/plan, live in the engine's
   version bump moves every pin in the same PR**.
 - Releases: tag `v{version}` → the cibuildwheel train (60 wheels +
   sdist) → manual twine upload (the delivery doctrine) → published
-  PyPI smoke.
+  PyPI smoke. From the 0.3.7.2 train on, the upload attaches PEP 740
+  attestations (`twine upload --attestations`, twine ≥ 6.1) — PyPI
+  releases to date carry none (X3 survey, 2026-10-20).
 - Every release is gated by a published-wheel smoke: install from
   PyPI, loads/dumps roundtrip, `teptris.engine_version()` == the pin,
   datetime materialization is real (`datetime.time` for local times),
