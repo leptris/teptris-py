@@ -20,6 +20,32 @@ shape where only a small subset of the tree is touched (teptris#79). */
 #endif
 #include <Python.h>
 #include "teptris/teptris.h"
+
+/* Borrowed UTF-8 access for dump keys and string values. The
+ * zero-copy read (PyUnicode_AsUTF8AndSize) is 3.10+ and outside the
+ * cp39-abi3 symbol set, so the two live behind Py_LIMITED_API: the
+ * version-specific wheels (cp310+, built WITHOUT the define) take the
+ * no-allocation path; the abi3 wheel compiles it out entirely (the
+ * symbol never appears in its TU - abi3audit --strict stays clean)
+ * and keeps the allocating AsUTF8String. */
+#ifdef Py_LIMITED_API
+static const char *w_key_borrow(PyObject *k, Py_ssize_t *len,
+                                PyObject **tmp) {
+    *tmp = PyUnicode_AsUTF8String(k);
+    if (!*tmp) return NULL;
+    *len = PyBytes_Size(*tmp);
+    return PyBytes_AsString(*tmp);
+}
+#define W_KEY_RELEASE(tmp) Py_DECREF(tmp)
+#else
+static const char *w_key_borrow(PyObject *k, Py_ssize_t *len,
+                                PyObject **tmp) {
+    *tmp = NULL;
+    return PyUnicode_AsUTF8AndSize(k, len);
+}
+#define W_KEY_RELEASE(tmp) ((void)0)
+#endif
+
 #include "teptris/plan.h"
 
 /* version-specific wheels build WITHOUT the limited API: the full
@@ -504,14 +530,12 @@ static PyObject *lazy_subscript(PyObject *self, PyObject *key) {
             PyErr_SetString(PyExc_TypeError, "table key must be str");
             return NULL;
         }
-        /* PyUnicode_AsUTF8AndSize is 3.10+; stay compatible with the
-         * 3.9 stable ABI by going through bytes. */
-        PyObject *kb = PyUnicode_AsUTF8String(key);
-        if (kb == NULL) return NULL;
-        const char *k = PyBytes_AsString(kb);
-        Py_ssize_t kl = PyBytes_Size(kb);
+        Py_ssize_t kl;
+        PyObject *ktmp;
+        const char *k = w_key_borrow(key, &kl, &ktmp);
+        if (!k) return NULL;
         child = teptris_node_table_get(n, k, (size_t)kl);
-        Py_DECREF(kb);
+        W_KEY_RELEASE(ktmp);
         break;
     }
     case TEPTRIS_ARRAY: {
@@ -724,11 +748,13 @@ static int put_scalar(teptris_builder *b, const char *key, size_t klen,
             b, key, klen, PyFloat_AsDouble(v)));
     }
     if (PyUnicode_Check(v)) {
-        PyObject *kb = PyUnicode_AsUTF8String(v);
-        if (!kb) return -1;
-        int rc = dump_check(teptris_builder_put_string(
-            b, key, klen, PyBytes_AsString(kb), (size_t)PyBytes_Size(kb)));
-        Py_DECREF(kb);
+        Py_ssize_t vn;
+        PyObject *vtmp;
+        const char *vp = w_key_borrow(v, &vn, &vtmp);
+        if (!vp) return -1;
+        int rc = dump_check(
+            teptris_builder_put_string(b, key, klen, vp, (size_t)vn));
+        W_KEY_RELEASE(vtmp);
         return rc;
     }
     /* datetime first: datetime subclasses date */
@@ -859,10 +885,11 @@ static int build_table(teptris_builder *b, PyObject *obj) {
             rc = -1;
             break;
         }
-        PyObject *kb = PyUnicode_AsUTF8String(k);
-        if (!kb) { rc = -1; break; }
-        const char *ks = PyBytes_AsString(kb);
-        size_t klen = (size_t)PyBytes_Size(kb);
+        Py_ssize_t klen_s;
+        PyObject *ktmp;
+        const char *ks = w_key_borrow(k, &klen_s, &ktmp);
+        if (!ks) { rc = -1; break; }
+        size_t klen = (size_t)klen_s;
         if (PyDict_Check(v)) {
             rc = dump_check(teptris_builder_open_table(b, ks, klen));
             if (rc == 0) rc = build_table(b, v);
@@ -886,7 +913,7 @@ static int build_table(teptris_builder *b, PyObject *obj) {
         } else {
             rc = put_scalar(b, ks, klen, v);
         }
-        Py_DECREF(kb);
+        W_KEY_RELEASE(ktmp);
     }
     Py_LeaveRecursiveCall();
     return rc;
@@ -1001,31 +1028,6 @@ static void ob_dt(obuf *b, uint8_t kind, const teptris_datetime *dt) {
     for (int i = 0; i < 8; i++) o[19 + i] = (uint8_t)(u >> (8 * i));
     b->len += 27;
 }
-
-/* Borrowed UTF-8 access for dump keys and string values. The
- * zero-copy read (PyUnicode_AsUTF8AndSize) is 3.10+ and outside the
- * cp39-abi3 symbol set, so the two live behind Py_LIMITED_API: the
- * version-specific wheels (cp310+, built WITHOUT the define) take the
- * no-allocation path; the abi3 wheel compiles it out entirely (the
- * symbol never appears in its TU - abi3audit --strict stays clean)
- * and keeps the allocating AsUTF8String. */
-#ifdef Py_LIMITED_API
-static const char *w_key_borrow(PyObject *k, Py_ssize_t *len,
-                                PyObject **tmp) {
-    *tmp = PyUnicode_AsUTF8String(k);
-    if (!*tmp) return NULL;
-    *len = PyBytes_Size(*tmp);
-    return PyBytes_AsString(*tmp);
-}
-#define W_KEY_RELEASE(tmp) Py_DECREF(tmp)
-#else
-static const char *w_key_borrow(PyObject *k, Py_ssize_t *len,
-                                PyObject **tmp) {
-    *tmp = NULL;
-    return PyUnicode_AsUTF8AndSize(k, len);
-}
-#define W_KEY_RELEASE(tmp) ((void)0)
-#endif
 
 static int w_scalar(obuf *b, const char *key, size_t klen, PyObject *v) {
     ob_key(b, key, klen);
