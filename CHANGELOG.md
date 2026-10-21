@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.7.2 (2026-10-21)
+
+- **Zero-copy keys/values on the version-specific wheels**: dumps
+  borrows UTF-8 directly (`PyUnicode_AsUTF8AndSize`) on the cp310+
+  wheels — no allocation per key or string value; dumps improve on
+  every shape (best-of-40, M1 Max: scalar_string -17%, cargo_like
+  -10%, deep_tables -9%, scalar_int -7.5%; the datetime win over
+  rtoml widens to 1.83x). The cp39-abi3 wheel compiles the branch
+  out entirely — nm proves its object references the 3.10+ symbol
+  zero times, and abi3audit stays clean. The abi3 wheel's dump path
+  is byte-for-byte the same code as 0.3.7.1.
+- Engine pin unchanged (v0.3.7 — no engine change; family law:
+  version = {engine 0.3.7}.{iteration 2}).
+
 ## 0.3.7.1 (2026-10-21)
 
 - **Error spans (E5)**: TOMLDecodeError gains `.span` — the
