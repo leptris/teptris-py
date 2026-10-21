@@ -16,8 +16,11 @@ try:
 except ModuleNotFoundError:  # py<3.11 dev hosts
     import tomli as tomllib
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-import teptris
+try:
+    import teptris  # the installed binding (CI)
+except ModuleNotFoundError:  # dev host: the in-tree build
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+    import teptris
 
 
 def norm(v):
