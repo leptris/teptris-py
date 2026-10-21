@@ -17,8 +17,16 @@ from setuptools import setup, Extension
 # (pip prefers the version-specific tag where one exists).
 _abi3 = sys.version_info < (3, 10)
 # pass py_limited_api ONLY for the abi3 line: a literal False still
-# counts as "set" and bdist_wheel then tags the wheel abi3 anyway
-_ext_kw = {"py_limited_api": True} if _abi3 else {}
+# counts as "set" and bdist_wheel then tags the wheel abi3 anyway.
+# py_limited_api=True sets the WHEEL TAG only - setuptools does NOT
+# define the macro; without it the extension compiles in full-API
+# mode while the wheel claims abi3 (0.3.7.2's first train: the
+# borrowed-key branch - gated on the macro - stayed in, and
+# abi3audit --strict failed on the future symbol). Define the macro
+# so the abi3 claim is compile-enforced.
+_ext_kw = ({"py_limited_api": True,
+            "define_macros": [("Py_LIMITED_API", "0x03090000")]}
+           if _abi3 else {})
 
 _engine_src = sorted(
     glob.glob(os.path.join("vendor", "libteptris", "src", "teptris",
