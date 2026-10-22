@@ -1,6 +1,8 @@
 name: cibuildwheel
 
-# abi3 wheels (closes #20): one cp39-abi3 wheel per platform covers every
+# Wheels: the floor is 3.10, so every wheel is version-specific
+# (cp3NN-cp3NN) and builds against the full C API (closes #20's
+# coverage goal at a 3.10 floor).
 # CPython >= 3.9. Linux cells build the C archive INSIDE each container
 # (manylinux and musllinux must link their own libc); macOS and Windows
 # build on the runner once (PGO: clang/gcc via the C core script,
@@ -104,34 +106,31 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Native cells build TWO lines via two cibuildwheel
-          # invocations: cp39-abi3 (works everywhere) and one
-          # version-specific wheel per 3.10-3.14 + free-threaded cp314t (each drops the
-          # limited API for the fast datetime.h materialization; the
-          # PGO engine archive is built once per cell and shared).
-          # They MUST be separate invocations: cibuildwheel skips
-          # later CPython builds once an abi3 wheel exists.
-          # Emulated cells (armv7/ppc64le/s390x) stay cp39-abi3 only —
-          # sextupling emulated builds is not worth the wall time.
-          # plain cp39 identifiers: the abi3 wheel tag comes from
-          # bdist_wheel py_limited_api, NOT from the selector (cibuildwheel
-          # has no abi3 grammar; build the minimum CPython, tag it abi3)
-          - { os: ubuntu-latest,     builds: cp39-manylinux_x86_64, vs_builds: cp310-manylinux_x86_64 cp311-manylinux_x86_64 cp312-manylinux_x86_64 cp313-manylinux_x86_64 cp314-manylinux_x86_64 cp314t-manylinux_x86_64 }
-          - { os: ubuntu-latest,     builds: cp39-musllinux_x86_64, vs_builds: cp310-musllinux_x86_64 cp311-musllinux_x86_64 cp312-musllinux_x86_64 cp313-musllinux_x86_64 cp314-musllinux_x86_64 cp314t-musllinux_x86_64 }
+          # The floor is 3.10: every wheel is version-specific
+          # (cp3NN-cp3NN), one cibuildwheel invocation per cell - the
+          # old cp39-abi3 line (and its two-invocation split, which
+          # existed because cibuildwheel skips later CPython builds
+          # once an abi3 wheel exists) is gone with the 3.9 floor.
+          # Emulated cells (armv7/ppc64le/s390x) build ONE minor
+          # (cp312, the common server CPython): sextupling emulated
+          # builds is not worth the wall time, and the sdist covers
+          # the other minors by compiling at install.
+          - { os: ubuntu-latest,     builds: cp310-manylinux_x86_64 cp311-manylinux_x86_64 cp312-manylinux_x86_64 cp313-manylinux_x86_64 cp314-manylinux_x86_64 cp314t-manylinux_x86_64 }
+          - { os: ubuntu-latest,     builds: cp310-musllinux_x86_64 cp311-musllinux_x86_64 cp312-musllinux_x86_64 cp313-musllinux_x86_64 cp314-musllinux_x86_64 cp314t-musllinux_x86_64 }
           # 32-bit ARM: no runners exist; CIBW_ARCHS_LINUX selects the
           # cross build and the containers run under qemu binfmt
           # (installed below; native cells keep the auto default)
-          - { os: ubuntu-latest,     builds: cp39-manylinux_armv7l, archs: armv7l }
-          - { os: ubuntu-latest,     builds: cp39-musllinux_armv7l, archs: armv7l }
+          - { os: ubuntu-latest,     builds: cp312-manylinux_armv7l, archs: armv7l }
+          - { os: ubuntu-latest,     builds: cp312-musllinux_armv7l, archs: armv7l }
           # big-endian server arches, emulated (qemu binfmt below)
-          - { os: ubuntu-latest,     builds: cp39-manylinux_ppc64le, archs: ppc64le }
-          - { os: ubuntu-latest,     builds: cp39-manylinux_s390x, archs: s390x }
-          - { os: ubuntu-24.04-arm,  builds: cp39-manylinux_aarch64, vs_builds: cp310-manylinux_aarch64 cp311-manylinux_aarch64 cp312-manylinux_aarch64 cp313-manylinux_aarch64 cp314-manylinux_aarch64 cp314t-manylinux_aarch64 }
-          - { os: ubuntu-24.04-arm,  builds: cp39-musllinux_aarch64, vs_builds: cp310-musllinux_aarch64 cp311-musllinux_aarch64 cp312-musllinux_aarch64 cp313-musllinux_aarch64 cp314-musllinux_aarch64 cp314t-musllinux_aarch64 }
-          - { os: macos-latest,      builds: cp39-macosx_arm64, vs_builds: cp310-macosx_arm64 cp311-macosx_arm64 cp312-macosx_arm64 cp313-macosx_arm64 cp314-macosx_arm64 cp314t-macosx_arm64 }
-          - { os: macos-15-intel,    builds: cp39-macosx_x86_64, vs_builds: cp310-macosx_x86_64 cp311-macosx_x86_64 cp312-macosx_x86_64 cp313-macosx_x86_64 cp314-macosx_x86_64 cp314t-macosx_x86_64 }
-          - { os: windows-latest,    builds: cp39-win_amd64, vs_builds: cp310-win_amd64 cp311-win_amd64 cp312-win_amd64 cp313-win_amd64 cp314-win_amd64 cp314t-win_amd64 }
-          - { os: windows-11-arm,    builds: cp39-win_arm64, vs_builds: cp310-win_arm64 cp311-win_arm64 cp312-win_arm64 cp313-win_arm64 cp314-win_arm64 cp314t-win_arm64 }
+          - { os: ubuntu-latest,     builds: cp312-manylinux_ppc64le, archs: ppc64le }
+          - { os: ubuntu-latest,     builds: cp312-manylinux_s390x, archs: s390x }
+          - { os: ubuntu-24.04-arm,  builds: cp310-manylinux_aarch64 cp311-manylinux_aarch64 cp312-manylinux_aarch64 cp313-manylinux_aarch64 cp314-manylinux_aarch64 cp314t-manylinux_aarch64 }
+          - { os: ubuntu-24.04-arm,  builds: cp310-musllinux_aarch64 cp311-musllinux_aarch64 cp312-musllinux_aarch64 cp313-musllinux_aarch64 cp314-musllinux_aarch64 cp314t-musllinux_aarch64 }
+          - { os: macos-latest,      builds: cp310-macosx_arm64 cp311-macosx_arm64 cp312-macosx_arm64 cp313-macosx_arm64 cp314-macosx_arm64 cp314t-macosx_arm64 }
+          - { os: macos-15-intel,    builds: cp310-macosx_x86_64 cp311-macosx_x86_64 cp312-macosx_x86_64 cp313-macosx_x86_64 cp314-macosx_x86_64 cp314t-macosx_x86_64 }
+          - { os: windows-latest,    builds: cp310-win_amd64 cp311-win_amd64 cp312-win_amd64 cp313-win_amd64 cp314-win_amd64 cp314t-win_amd64 }
+          - { os: windows-11-arm,    builds: cp310-win_arm64 cp311-win_arm64 cp312-win_arm64 cp313-win_arm64 cp314-win_arm64 cp314t-win_arm64 }
     steps:
       - uses: actions/checkout@v7
 
@@ -159,69 +158,14 @@ jobs:
         if: matrix.archs
         run: docker run --privileged --rm tonistiigi/binfmt --install arm,ppc64le,s390x
 
-      # abi3 line first (its own invocation: cibuildwheel skips later
-      # CPython builds once an abi3 wheel exists, so the
-      # version-specific line must be a separate run)
-      - name: cibuildwheel (cp39-abi3)
+      - name: cibuildwheel (cp310-cp314t)
         uses: pypa/cibuildwheel@v4.3.1
         env:
           CIBW_BUILD: ${{ matrix.builds }}
-          CIBW_ARCHS_LINUX: ${{ matrix.archs || 'auto' }}
-          CIBW_ARCHS_MACOS: ${{ runner.arch == 'ARM64' && 'arm64' || 'x86_64' }}
-          CIBW_ARCHS_WINDOWS: ${{ runner.arch == 'ARM64' && 'ARM64' || 'AMD64' }}
-          # relative to the build context: /project only exists in the
-          # Linux docker cells, native mac/win runners need this
-          # unix engines build at libteptris-src/build (linux inside
-          # the containers, mac on the runner); windows at bstatic (the
-          # two-tree MSVC PGO split) - hence the per-OS override below
-          CIBW_ENVIRONMENT: >-
-            TEPTRIS_INCLUDE=libteptris-src/src/include
-            TEPTRIS_LIBDIR=libteptris-src/build/src
-          # MSVC PGO: ci-lib-build.sh trains teptris.pgd on the runner;
-          # setup.py adds /LTCG /USEPROFILE:PGD=... to the ext link.
-          # per-OS environment OVERRIDES CIBW_ENVIRONMENT: the base
-          # vars must repeat here.
-          CIBW_ENVIRONMENT_WINDOWS: >-
-            TEPTRIS_INCLUDE=libteptris-src/src/include
-            TEPTRIS_LIBDIR=libteptris-src/bplain/src
-          # cp/rm/mv ONLY: the Windows cells run this through cmd,
-          # where mkdir -p does not exist (proven the hard way). The
-          # second cp nests src/ inside the first copy's directory;
-          # the duplicated top-level entries match no package-data
-          # glob and never reach the wheel.
-          CIBW_BEFORE_BUILD: >-
-            rm -rf src/teptris/_engine &&
-            cp -r libteptris-src/src src/teptris/_engine &&
-            cp -r libteptris-src/src src/teptris/_engine/src &&
-            cp libteptris-src/LICENSE.md src/teptris/_engine/LICENSE.md
-          CIBW_BEFORE_ALL_LINUX: >-
-            set -eux;
-            if command -v apk >/dev/null 2>&1; then apk add --no-cache build-base bash; fi;
-            python3 -m pip install -q cmake ninja;
-            python3 libteptris-src/scripts/gen_bench_corpus.py libteptris-src/bench-corpus;
-            TEPTRIS_PGO_LTO=1 bash libteptris-src/scripts/build-pgo.sh
-            libteptris-src libteptris-src/build libteptris-src/bench-corpus
-          CIBW_TEST_COMMAND: >-
-            python -c "import teptris, threading;
-            doc = 'x = 1979-05-27T07:32:00-07:00\ny = 1979-05-27T07:32:00+05:30';
-            d = teptris.loads(doc);
-            assert d['x'].utcoffset().total_seconds() == -25200;
-            assert d['y'].utcoffset().total_seconds() == 19800;
-            ts = [threading.Thread(target=teptris.loads, args=(doc,)) for _ in range(200)];
-            [t.start() for t in ts];
-            [t.join() for t in ts];
-            o = teptris.loads('t = 07:32\n[m]\nk = 1.5\n');
-            assert teptris.loads(teptris.dumps(o)) == o;
-            print('smoke+hammer ok')"
-      - name: cibuildwheel (cp310-cp314)
-        if: matrix.vs_builds
-        uses: pypa/cibuildwheel@v4.3.1
-        env:
-          CIBW_BUILD: ${{ matrix.vs_builds }}
           # cibuildwheel v4 REMOVED the cpython-freethreading enable
           # group: 3.14t builds by default (the cp314t selectors need
           # no opt-in anymore). cpython-prerelease stays for future
-          # 3.15 betas; it selects nothing in these vs_builds.
+          # 3.15 betas; it selects nothing in these builds.
           CIBW_ENABLE: cpython-prerelease
           CIBW_ARCHS_LINUX: ${{ matrix.archs || 'auto' }}
           CIBW_ARCHS_MACOS: ${{ runner.arch == 'ARM64' && 'arm64' || 'x86_64' }}
@@ -236,7 +180,7 @@ jobs:
           # request, but the windows-11-vs2026-arm64 image makes the
           # missing pgd FATAL (LNK1266, run 37159686630) - ARM64
           # links plain (ci-lib-build.sh stages bplain as bstatic
-          # there; the abi3-line link shape).
+          # there).
           CIBW_ENVIRONMENT_WINDOWS: ${{ runner.arch != 'ARM64' && 'TEPTRIS_INCLUDE=libteptris-src/src/include TEPTRIS_LIBDIR=libteptris-src/bstatic/src TEPTRIS_MSVC_PGO=1 TEPTRIS_PGD=libteptris-src/bpgd/train.pgd' || 'TEPTRIS_INCLUDE=libteptris-src/src/include TEPTRIS_LIBDIR=libteptris-src/bstatic/src' }}
           CIBW_BEFORE_BUILD: >-
             rm -rf src/teptris/_engine &&

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.7.3 (2026-10-22)
+
+- **The floor rises to CPython >= 3.10** (owner decision): the
+  cp39-abi3 wheel line is retired. Every wheel is now
+  version-specific (cp310-cp314 + cp314t) and builds against the
+  full C API — borrowed UTF-8 reads and the datetime.h fast paths
+  ship everywhere; the limited-API branches, the abi3 define
+  machinery, and the audit special-casing are deleted rather than
+  gated. Emulated arches (armv7l/ppc64le/s390x) ship one cp312 wheel
+  each; other minors on those arches resolve to the sdist.
+  3.9 users keep 0.3.7.2 (pip resolves it for them).
+- Engine pin unchanged (v0.3.7 — no engine change; family law:
+  version = {engine 0.3.7}.{iteration 3}).
+
 ## 0.3.7.2 (2026-10-21)
 
 - **Zero-copy keys/values on the version-specific wheels**: dumps

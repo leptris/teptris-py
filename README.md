@@ -49,14 +49,17 @@ own object construction; both libraries materialize fully.
 
 ## Packaging
 
-`pip install teptris` resolves one of 10 `cp39-abi3` wheels —
-manylinux/musllinux x86_64, aarch64 and armv7l (32-bit ARM, built
-under qemu), macOS arm64 and x86_64, Windows AMD64 and ARM64 —
-covering every CPython >= 3.9 including future minors. The extension statically links `libteptris`, so each
-wheel is a single self-contained module (no shared-library chain).
-Linux wheels build the engine inside each container via cibuildwheel
-so musllinux links musl; the manylinux wheels carry the maximal tag
-set (glibc >= 2.17).
+`pip install teptris` requires CPython >= 3.10 and resolves one of
+the version-specific wheels — cp310 through cp314 (+ free-threaded
+cp314t) across manylinux/musllinux x86_64 and aarch64, macOS arm64
+and x86_64, Windows AMD64 and ARM64, plus a cp312 wheel for the
+emulated arches (armv7l, ppc64le, s390x). Every wheel builds against
+the full C API — no limited-API line — so borrowed UTF-8 reads and
+the datetime.h fast paths ship everywhere. The extension statically
+links `libteptris`, so each wheel is a single self-contained module
+(no shared-library chain). Linux wheels build the engine inside each
+container via cibuildwheel so musllinux links musl; the manylinux
+wheels carry the maximal tag set (glibc >= 2.17).
 
 Every wheel also carries the engine C SOURCE at `teptris/_engine`
 (beside the compiled extension) — the recompile path for rebuilding
