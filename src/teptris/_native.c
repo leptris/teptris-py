@@ -9,42 +9,21 @@ The C ABI for both paths lives in libteptris (`teptris/teptris.h`). The
 lazy twin avoids materializing the intermediate dict/list for the many
 shape where only a small subset of the tree is touched (teptris#79). */
 #define PY_SSIZE_T_CLEAN
-/* abi3 (#20): the datetime C-API is not in the limited API. The
- * cp39-abi3 wheel keeps the cached-callables path; every
- * version-specific wheel (cp310-cp313) builds without the limited
- * API and takes the fast datetime.h path below — setup.py drops
- * py_limited_api in lockstep so those wheels tag cp3NN-cp3NN. */
-#if !defined(Py_LIMITED_API) && defined(PY_VERSION_HEX) && \
-    PY_VERSION_HEX < 0x030A0000
-#define Py_LIMITED_API 0x03090000
-#endif
+/* The floor is 3.10: no limited-API build exists, so the extension
+ * always compiles against the full C API (borrowed UTF-8 reads,
+ * datetime.h fast paths). */
+#include <Python.h>
 #include <Python.h>
 #include "teptris/teptris.h"
 
-/* Borrowed UTF-8 access for dump keys and string values. The
- * zero-copy read (PyUnicode_AsUTF8AndSize) is 3.10+ and outside the
- * cp39-abi3 symbol set, so the two live behind Py_LIMITED_API: the
- * version-specific wheels (cp310+, built WITHOUT the define) take the
- * no-allocation path; the abi3 wheel compiles it out entirely (the
- * symbol never appears in its TU - abi3audit --strict stays clean)
- * and keeps the allocating AsUTF8String. */
-#ifdef Py_LIMITED_API
-static const char *w_key_borrow(PyObject *k, Py_ssize_t *len,
-                                PyObject **tmp) {
-    *tmp = PyUnicode_AsUTF8String(k);
-    if (!*tmp) return NULL;
-    *len = PyBytes_Size(*tmp);
-    return PyBytes_AsString(*tmp);
-}
-#define W_KEY_RELEASE(tmp) Py_DECREF(tmp)
-#else
-static const char *w_key_borrow(PyObject *k, Py_ssize_t *len,
-                                PyObject **tmp) {
-    *tmp = NULL;
+/* Borrowed UTF-8 access for dump keys and string values: the floor
+ * is 3.10 and every wheel builds against the full C API, so the
+ * zero-copy read is unconditional. (History: the old cp39-abi3 line
+ * compiled this behind the limited API - its symbol set excludes the
+ * 3.10+ read - and kept the allocating AsUTF8String.) */
+static const char *w_key_borrow(PyObject *k, Py_ssize_t *len) {
     return PyUnicode_AsUTF8AndSize(k, len);
 }
-#define W_KEY_RELEASE(tmp) ((void)0)
-#endif
 
 #include "teptris/plan.h"
 
@@ -53,11 +32,13 @@ static const char *w_key_borrow(PyObject *k, Py_ssize_t *len,
  * (measured 51% of datetime_heavy load:
  * PyArg_ParseTupleAndKeywords inside type_call). The abi3 line keeps
  * the cached-callables path. */
-#if !defined(Py_LIMITED_API) && PY_VERSION_HEX >= 0x030A0000
+/* The full datetime.h C-API replaces the generic-call
+ * materialization everywhere (measured 51% of datetime_heavy
+ * load: PyArg_ParseTupleAndKeywords inside type_call). The
+ * old abi3 line's cached-callables path is gone with the
+ * 3.9 floor. */
 #define TEPTRIS_FAST_DT 1
-#endif
 
-#ifdef TEPTRIS_FAST_DT
 #include <datetime.h>
 /* aware datetimes reuse one timezone object per offset: offsets are
  * bounded (~56 real zone offsets), the cache lives for the module.
@@ -66,7 +47,6 @@ static const char *w_key_borrow(PyObject *k, Py_ssize_t *len,
  * pattern is a read-modify-write. */
 static PyObject *tep_tz_cache;
 static PyThread_type_lock tep_tz_lock;
-#endif
 
 static PyObject *TomlDecodeError;
 /* datetime module callables: the load side only needs them below
@@ -138,7 +118,6 @@ static PyObject *obj_from_node(const teptris_node *n) {
     }
     default: {
         teptris_datetime d; teptris_node_datetime(n, &d);
-#ifdef TEPTRIS_FAST_DT
         switch (teptris_node_kind(n)) {
         case TEPTRIS_DATE_LOCAL:
             return PyDate_FromDate(d.year, d.month, d.day);
@@ -197,67 +176,6 @@ static PyObject *obj_from_node(const teptris_node *n) {
                 (int)(d.nanosecond / 1000), tz,
                 PyDateTimeAPI->DateTimeType);
         }
-#else
-        /* NOTE: PyObject_CallFunctionObjArgs does NOT steal argument
-         * references — every PyLong below is owned and must be
-         * released (the old path leaked every boxed argument). */
-        switch (teptris_node_kind(n)) {
-        case TEPTRIS_DATE_LOCAL: {
-            PyObject *a = PyLong_FromLong(d.year);
-            PyObject *b = PyLong_FromLong(d.month);
-            PyObject *c = PyLong_FromLong(d.day);
-            PyObject *r = PyObject_CallFunctionObjArgs(
-                tep_dt_date, a, b, c, NULL);
-            Py_XDECREF(a); Py_XDECREF(b); Py_XDECREF(c);
-            return r;
-        }
-        case TEPTRIS_TIME_LOCAL: {
-            PyObject *a = PyLong_FromLong(d.hour);
-            PyObject *b = PyLong_FromLong(d.minute);
-            PyObject *c = PyLong_FromLong(d.second);
-            PyObject *e = PyLong_FromLong((long)(d.nanosecond / 1000));
-            PyObject *r = PyObject_CallFunctionObjArgs(
-                tep_dt_time, a, b, c, e, NULL);
-            Py_XDECREF(a); Py_XDECREF(b); Py_XDECREF(c); Py_XDECREF(e);
-            return r;
-        }
-        default: break;
-        }
-        if (teptris_node_kind(n) == TEPTRIS_DATETIME_LOCAL) {
-            PyObject *a = PyLong_FromLong(d.year);
-            PyObject *b = PyLong_FromLong(d.month);
-            PyObject *c = PyLong_FromLong(d.day);
-            PyObject *e = PyLong_FromLong(d.hour);
-            PyObject *f = PyLong_FromLong(d.minute);
-            PyObject *g = PyLong_FromLong(d.second);
-            PyObject *h = PyLong_FromLong((long)(d.nanosecond / 1000));
-            PyObject *r = PyObject_CallFunctionObjArgs(
-                tep_dt_datetime, a, b, c, e, f, g, h, NULL);
-            Py_XDECREF(a); Py_XDECREF(b); Py_XDECREF(c);
-            Py_XDECREF(e); Py_XDECREF(f); Py_XDECREF(g); Py_XDECREF(h);
-            return r;
-        }
-        /* aware: tz = timezone(timedelta(0, off)); datetime(..., tz) */
-        PyObject *d0 = PyLong_FromLong(0);
-        PyObject *d1 = PyLong_FromLong((long)d.offset_seconds);
-        PyObject *delta = PyObject_CallFunctionObjArgs(
-            tep_dt_timedelta, d0, d1, d0, NULL);
-        Py_XDECREF(d0); Py_XDECREF(d1);
-        if (!delta) return NULL;
-        PyObject *tz = PyObject_CallFunctionObjArgs(tep_dt_timezone, delta, NULL);
-        Py_DECREF(delta);
-        if (!tz) return NULL;
-        PyObject *args[8] = {PyLong_FromLong(d.year), PyLong_FromLong(d.month),
-                             PyLong_FromLong(d.day), PyLong_FromLong(d.hour),
-                             PyLong_FromLong(d.minute),
-                             PyLong_FromLong(d.second),
-                             PyLong_FromLong((long)(d.nanosecond / 1000)), tz};
-        PyObject *aware = PyObject_CallFunctionObjArgs(
-            tep_dt_datetime, args[0], args[1], args[2], args[3], args[4],
-            args[5], args[6], args[7], NULL);
-        for (int i = 0; i < 8; i++) Py_XDECREF(args[i]);
-        return aware;
-#endif
     }
 }
 }
@@ -531,11 +449,9 @@ static PyObject *lazy_subscript(PyObject *self, PyObject *key) {
             return NULL;
         }
         Py_ssize_t kl;
-        PyObject *ktmp;
-        const char *k = w_key_borrow(key, &kl, &ktmp);
+        const char *k = w_key_borrow(key, &kl);
         if (!k) return NULL;
         child = teptris_node_table_get(n, k, (size_t)kl);
-        W_KEY_RELEASE(ktmp);
         break;
     }
     case TEPTRIS_ARRAY: {
@@ -749,19 +665,16 @@ static int put_scalar(teptris_builder *b, const char *key, size_t klen,
     }
     if (PyUnicode_Check(v)) {
         Py_ssize_t vn;
-        PyObject *vtmp;
-        const char *vp = w_key_borrow(v, &vn, &vtmp);
+        const char *vp = w_key_borrow(v, &vn);
         if (!vp) return -1;
         int rc = dump_check(
             teptris_builder_put_string(b, key, klen, vp, (size_t)vn));
-        W_KEY_RELEASE(vtmp);
         return rc;
     }
     /* datetime first: datetime subclasses date */
     if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_datetime)) {
         teptris_datetime dt;
         memset(&dt, 0, sizeof(dt));
-#ifdef TEPTRIS_FAST_DT
         /* struct reads: no attribute crossings (utcoffset stays a
          * real call — it is Python-level by design) */
         dt.year = (int32_t)PyDateTime_GET_YEAR(v);
@@ -786,63 +699,24 @@ static int put_scalar(teptris_builder *b, const char *key, size_t klen,
         Py_DECREF(off);
         return dump_check(teptris_builder_put_datetime(
             b, key, klen, TEPTRIS_DATETIME_OFFSET, &dt));
-#else
-        dt.year = (int32_t)attr_long(v, "year");
-        dt.month = (uint8_t)attr_long(v, "month");
-        dt.day = (uint8_t)attr_long(v, "day");
-        dt.hour = (uint8_t)attr_long(v, "hour");
-        dt.minute = (uint8_t)attr_long(v, "minute");
-        dt.second = (uint8_t)attr_long(v, "second");
-        dt.nanosecond = (uint32_t)attr_long(v, "microsecond") * 1000u;
-        PyObject *tz = dt_tzinfo(v);
-        if (tz == Py_None) {
-            Py_DECREF(tz);
-            return dump_check(teptris_builder_put_datetime(
-                b, key, klen, TEPTRIS_DATETIME_LOCAL, &dt));
-        }
-        PyObject *off = PyObject_CallMethod(tz, "utcoffset", "O", v);
-        Py_DECREF(tz);
-        if (!off) return -1;
-        if (off != Py_None) {
-            dt.offset_seconds =
-                attr_long(off, "days") * 86400 +
-                attr_long(off, "seconds");
-        }
-        Py_DECREF(off);
-        return dump_check(teptris_builder_put_datetime(
-            b, key, klen, TEPTRIS_DATETIME_OFFSET, &dt));
-#endif
     }
     if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_date)) {
         teptris_datetime dt;
         memset(&dt, 0, sizeof(dt));
-#ifdef TEPTRIS_FAST_DT
         dt.year = (int32_t)PyDateTime_GET_YEAR(v);
         dt.month = (uint8_t)PyDateTime_GET_MONTH(v);
         dt.day = (uint8_t)PyDateTime_GET_DAY(v);
-#else
-        dt.year = (int32_t)attr_long(v, "year");
-        dt.month = (uint8_t)attr_long(v, "month");
-        dt.day = (uint8_t)attr_long(v, "day");
-#endif
         return dump_check(teptris_builder_put_datetime(
             b, key, klen, TEPTRIS_DATE_LOCAL, &dt));
     }
     if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_time)) {
         teptris_datetime dt;
         memset(&dt, 0, sizeof(dt));
-#ifdef TEPTRIS_FAST_DT
         dt.hour = (uint8_t)PyDateTime_TIME_GET_HOUR(v);
         dt.minute = (uint8_t)PyDateTime_TIME_GET_MINUTE(v);
         dt.second = (uint8_t)PyDateTime_TIME_GET_SECOND(v);
         dt.nanosecond =
             (uint32_t)PyDateTime_TIME_GET_MICROSECOND(v) * 1000u;
-#else
-        dt.hour = (uint8_t)attr_long(v, "hour");
-        dt.minute = (uint8_t)attr_long(v, "minute");
-        dt.second = (uint8_t)attr_long(v, "second");
-        dt.nanosecond = (uint32_t)attr_long(v, "microsecond") * 1000u;
-#endif
         return dump_check(teptris_builder_put_datetime(
             b, key, klen, TEPTRIS_TIME_LOCAL, &dt));
     }
@@ -886,8 +760,7 @@ static int build_table(teptris_builder *b, PyObject *obj) {
             break;
         }
         Py_ssize_t klen_s;
-        PyObject *ktmp;
-        const char *ks = w_key_borrow(k, &klen_s, &ktmp);
+        const char *ks = w_key_borrow(k, &klen_s);
         if (!ks) { rc = -1; break; }
         size_t klen = (size_t)klen_s;
         if (PyDict_Check(v)) {
@@ -913,7 +786,6 @@ static int build_table(teptris_builder *b, PyObject *obj) {
         } else {
             rc = put_scalar(b, ks, klen, v);
         }
-        W_KEY_RELEASE(ktmp);
     }
     Py_LeaveRecursiveCall();
     return rc;
@@ -1053,13 +925,11 @@ static int w_scalar(obuf *b, const char *key, size_t klen, PyObject *v) {
     }
     if (PyUnicode_Check(v)) {
         Py_ssize_t n;
-        PyObject *tmp;
-        const char *p = w_key_borrow(v, &n, &tmp);
+        const char *p = w_key_borrow(v, &n);
         if (!p) return -1;
         ob_byte(b, 0x02);
         ob_u32(b, (uint32_t)n);
         ob_put(b, p, (size_t)n);
-        W_KEY_RELEASE(tmp);
         return 0;
     }
     /* datetime first: datetime subclasses date - mirror put_scalar's
@@ -1067,7 +937,6 @@ static int w_scalar(obuf *b, const char *key, size_t klen, PyObject *v) {
     if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_datetime)) {
         teptris_datetime dt;
         memset(&dt, 0, sizeof(dt));
-#ifdef TEPTRIS_FAST_DT
         dt.year = (int32_t)PyDateTime_GET_YEAR(v);
         dt.month = (uint8_t)PyDateTime_GET_MONTH(v);
         dt.day = (uint8_t)PyDateTime_GET_DAY(v);
@@ -1090,62 +959,24 @@ static int w_scalar(obuf *b, const char *key, size_t klen, PyObject *v) {
         Py_DECREF(off);
         ob_dt(b, 4, &dt); /* TEPTRIS_DATETIME_OFFSET */
         return 0;
-#else
-        dt.year = (int32_t)attr_long(v, "year");
-        dt.month = (uint8_t)attr_long(v, "month");
-        dt.day = (uint8_t)attr_long(v, "day");
-        dt.hour = (uint8_t)attr_long(v, "hour");
-        dt.minute = (uint8_t)attr_long(v, "minute");
-        dt.second = (uint8_t)attr_long(v, "second");
-        dt.nanosecond = (uint32_t)attr_long(v, "microsecond") * 1000u;
-        PyObject *tz = dt_tzinfo(v);
-        if (tz == Py_None) {
-            Py_DECREF(tz);
-            ob_dt(b, 5, &dt);
-            return 0;
-        }
-        PyObject *off = PyObject_CallMethod(tz, "utcoffset", "O", v);
-        Py_DECREF(tz);
-        if (!off) return -1;
-        if (off != Py_None) {
-            dt.offset_seconds =
-                attr_long(off, "days") * 86400 + attr_long(off, "seconds");
-        }
-        Py_DECREF(off);
-        ob_dt(b, 4, &dt);
-        return 0;
-#endif
     }
     if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_date)) {
         teptris_datetime dt;
         memset(&dt, 0, sizeof(dt));
-#ifdef TEPTRIS_FAST_DT
         dt.year = (int32_t)PyDateTime_GET_YEAR(v);
         dt.month = (uint8_t)PyDateTime_GET_MONTH(v);
         dt.day = (uint8_t)PyDateTime_GET_DAY(v);
-#else
-        dt.year = (int32_t)attr_long(v, "year");
-        dt.month = (uint8_t)attr_long(v, "month");
-        dt.day = (uint8_t)attr_long(v, "day");
-#endif
         ob_dt(b, 6, &dt); /* TEPTRIS_DATE_LOCAL */
         return 0;
     }
     if (PyObject_TypeCheck(v, (PyTypeObject *)tep_dt_time)) {
         teptris_datetime dt;
         memset(&dt, 0, sizeof(dt));
-#ifdef TEPTRIS_FAST_DT
         dt.hour = (uint8_t)PyDateTime_TIME_GET_HOUR(v);
         dt.minute = (uint8_t)PyDateTime_TIME_GET_MINUTE(v);
         dt.second = (uint8_t)PyDateTime_TIME_GET_SECOND(v);
         dt.nanosecond =
             (uint32_t)PyDateTime_TIME_GET_MICROSECOND(v) * 1000u;
-#else
-        dt.hour = (uint8_t)attr_long(v, "hour");
-        dt.minute = (uint8_t)attr_long(v, "minute");
-        dt.second = (uint8_t)attr_long(v, "second");
-        dt.nanosecond = (uint32_t)attr_long(v, "microsecond") * 1000u;
-#endif
         ob_dt(b, 7, &dt); /* TEPTRIS_TIME_LOCAL */
         return 0;
     }
@@ -1242,11 +1073,9 @@ static int w_table_members(obuf *b, PyObject *obj) {
         }
         if (PyDict_Check(v) || PyList_Check(v)) {
             Py_ssize_t klen;
-            PyObject *ktmp;
-            const char *ks = w_key_borrow(k, &klen, &ktmp);
+            const char *ks = w_key_borrow(k, &klen);
             if (!ks) { rc = -1; break; }
             ob_key(b, ks, (size_t)klen);
-            W_KEY_RELEASE(ktmp);
             rc = w_container_value(b, v);
         }
     }
@@ -1266,11 +1095,9 @@ static int w_table_scalars(obuf *b, PyObject *obj) {
         }
         if (PyDict_Check(v) || PyList_Check(v)) continue;
         Py_ssize_t klen;
-        PyObject *ktmp;
-        const char *ks = w_key_borrow(k, &klen, &ktmp);
+        const char *ks = w_key_borrow(k, &klen);
         if (!ks) { rc = -1; break; }
         rc = w_scalar(b, ks, (size_t)klen, v);
-        W_KEY_RELEASE(ktmp);
     }
     return rc;
 }
@@ -1373,8 +1200,7 @@ static PyObject *ext_plan_build(PyObject *self, PyObject *args) {
         if (!PyList_Check(row) || PyList_Size(row) < 3) {
             goto bad_row;
         }
-        /* PyUnicode_AsUTF8 and the PyList_GET_* macros are not in
-         * the limited API (the abi3 builds force Py_LIMITED_API). */
+        /* the plan-name copy is strdup'd into the C row */
         PyObject *name = PyList_GetItem(row, 0);
         if (!PyUnicode_Check(name)) goto bad_row;
         PyObject *name_utf8 = PyUnicode_AsUTF8String(name);
@@ -1479,9 +1305,8 @@ static PyObject *plan_scalar(const teptris_plan_result *res, uint32_t row) {
                 r = PyObject_CallFunctionObjArgs(
                     tep_dt_datetime, y, mo, dy, h, mi, s, us, NULL);
             } else { /* DATETIME_OFFSET */
-                /* PyDelta_FromDSU is not in the limited API (the
-                 * abi3 builds force Py_LIMITED_API) — construct via
-                 * the cached timedelta class, limited-API safe. */
+                /* the offset delta: built via the cached timedelta
+                 * class (one shared tz object per offset) */
                 PyObject *delta =
                     PyObject_CallFunction(tep_dt_timedelta, "iii",
                                           0, (int)d.offset_seconds, 0);
@@ -1569,9 +1394,8 @@ static PyObject *plan_elem_scalar(const teptris_plan_result *res,
                 r = PyObject_CallFunctionObjArgs(
                     tep_dt_datetime, y, mo, dy, h, mi, s, us, NULL);
             } else { /* DATETIME_OFFSET */
-                /* PyDelta_FromDSU is not in the limited API (the
-                 * abi3 builds force Py_LIMITED_API) — construct via
-                 * the cached timedelta class, limited-API safe. */
+                /* the offset delta: built via the cached timedelta
+                 * class (one shared tz object per offset) */
                 PyObject *delta =
                     PyObject_CallFunction(tep_dt_timedelta, "iii",
                                           0, (int)d.offset_seconds, 0);
@@ -1855,14 +1679,12 @@ PyMODINIT_FUNC PyInit__native(void) {
         Py_DECREF(m);
         return NULL;
     }
-#ifdef TEPTRIS_FAST_DT
     PyDateTime_IMPORT;
     if (PyDateTimeAPI == NULL) { Py_DECREF(m); return NULL; }
     tep_tz_cache = PyDict_New();
     if (tep_tz_cache == NULL) { Py_DECREF(m); return NULL; }
     tep_tz_lock = PyThread_allocate_lock();
     if (tep_tz_lock == NULL) { Py_DECREF(m); return NULL; }
-#endif
     TomlDecodeError = PyErr_NewException("teptris._native.DecodeError", NULL, NULL);
     Py_INCREF(TomlDecodeError);
     PyModule_AddObject(m, "DecodeError", TomlDecodeError);

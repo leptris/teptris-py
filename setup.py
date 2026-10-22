@@ -11,22 +11,10 @@ from setuptools import setup, Extension
 # RELATIVE paths only: setuptools' manifest check rejects absolute
 # source paths when older setuptools builds the sdist (seen with the
 # 3.9-era resolution; setup.py always runs from the project root).
-# version-specific builds (cp310+) skip the limited API: the full
-# datetime.h C-API replaces generic-call datetime materialization;
-# those wheels tag cp3NN-cp3NN while 3.9 keeps the cp39-abi3 line
-# (pip prefers the version-specific tag where one exists).
-_abi3 = sys.version_info < (3, 10)
-# pass py_limited_api ONLY for the abi3 line: a literal False still
-# counts as "set" and bdist_wheel then tags the wheel abi3 anyway.
-# py_limited_api=True sets the WHEEL TAG only - setuptools does NOT
-# define the macro; without it the extension compiles in full-API
-# mode while the wheel claims abi3 (0.3.7.2's first train: the
-# borrowed-key branch - gated on the macro - stayed in, and
-# abi3audit --strict failed on the future symbol). Define the macro
-# so the abi3 claim is compile-enforced.
-_ext_kw = ({"py_limited_api": True,
-            "define_macros": [("Py_LIMITED_API", "0x03090000")]}
-           if _abi3 else {})
+# the floor is 3.10: every wheel is version-specific (cp3NN-cp3NN)
+# and builds against the full C API - no limited-API line exists.
+# The extension therefore uses borrowed UTF-8 access (see _native.c
+# w_key_borrow) and the full datetime.h C API unconditionally.
 
 _engine_src = sorted(
     glob.glob(os.path.join("vendor", "libteptris", "src", "teptris",
@@ -51,7 +39,7 @@ _archive = os.path.join(
 # abi3 line keeps the plain link - the artifact that has always
 # loaded everywhere.
 _msvc_pgo_args = []
-if os.environ.get("TEPTRIS_MSVC_PGO") == "1" and not _abi3:
+if os.environ.get("TEPTRIS_MSVC_PGO") == "1":
     pgd = os.environ.get("TEPTRIS_PGD",
                          "libteptris-src/bpgd/train.pgd")
     _msvc_pgo_args = ["/LTCG", "/USEPROFILE:PGD=" + os.path.abspath(pgd)]
@@ -61,14 +49,12 @@ if _engine_src:
         sources=["src/teptris/_native.c"] + _engine_src,
         include_dirs=["vendor/libteptris/src",
                       "vendor/libteptris/src/include"],
-        **_ext_kw,
     )
 elif os.path.exists(_archive):
     ext = Extension(
         "teptris._native",
         sources=["src/teptris/_native.c"],
         include_dirs=[inc],
-        **_ext_kw,
         extra_objects=[_archive],
         extra_link_args=_msvc_pgo_args,
     )
@@ -80,7 +66,6 @@ else:
         "teptris._native",
         sources=["src/teptris/_native.c"],
         include_dirs=[inc],
-        **_ext_kw,
         library_dirs=[libdir],
         libraries=["teptris"],
         extra_link_args=(
@@ -102,4 +87,4 @@ else:
 # The engine source rides inside every wheel at teptris/_engine/
 # (populated by CIBW_BEFORE_BUILD; the recompile path).
 setup(ext_modules=[ext], package_dir={"": "src"},
-      options=({"bdist_wheel": {"py_limited_api": "cp39"}} if _abi3 else {}))
+      )
