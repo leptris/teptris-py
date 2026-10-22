@@ -2,9 +2,10 @@ name: binding-bench
 
 # Guards the Python BINDING hot path (_native.c: loads/dumps
 # materialization, error paths) against silent regressions: every
-# main push benches HEAD against the latest PUBLISHED wheel on the
-# same runner (median-of-3; the engine has its own A/B lane and
-# cannot see the binding layer). Mirrors teptris-ruby's lane.
+# main push benches HEAD against the latest RELEASE, both as PLAIN
+# SOURCE builds on the same runner (median-of-3; the engine has its
+# own A/B lane and cannot see the binding layer). Mirrors
+# teptris-ruby's lane.
 
 on:
   push:
@@ -35,18 +36,27 @@ jobs:
         with:
           python-version: '3.12'
 
-      # PGO+LTO — the exact config the linux wheel cells build. A
-      # plain (non-PGO) HEAD loses ~10% on engine-bound shapes
-      # (dump_medium 0.894-0.897 vs the 0.90 gate: structurally under,
-      # both runs red since the lane landed) and the comparison would
-      # measure the build config, not the binding.
-      - name: Build the C archive (PGO, the wheel config)
+      # BOTH SIDES are plain source builds on this runner with this
+      # compiler - that is what makes the ratio measure the binding.
+      # Matching the PUBLISHED wheel's config was tried and cannot be
+      # hit exactly: the wheel builds inside the manylinux container
+      # with its own PGO toolchain, and even with the same
+      # build-pgo.sh on the runner, identical source measured
+      # dump_medium 0.851 (three data points: 0.810/0.851 + a
+      # broken-config local 0.635) - a container-vs-runner artifact,
+      # not a binding regression. The released SDIST is the honest
+      # `prev`: same cmake path, same compiler, only the binding
+      # source differs.
+      - name: Build the C archive (plain, both sides identical)
         run: |
           set -eux
           python3 -m pip install -q cmake ninja
-          python3 libteptris-src/scripts/gen_bench_corpus.py libteptris-src/bench-corpus
-          TEPTRIS_PGO_LTO=1 bash libteptris-src/scripts/build-pgo.sh \
-            libteptris-src libteptris-src/build libteptris-src/bench-corpus
+          cmake -B libteptris-src/build -S libteptris-src \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            -DTEPTRIS_BUILD_CLI=OFF -DTEPTRIS_BUILD_SHARED=OFF \
+            -DTEPTRIS_BUILD_STATIC=ON -DTEPTRIS_ENABLE_LTO=OFF \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+          cmake --build libteptris-src/build -j
 
       - name: Install HEAD into venv A
         run: |
@@ -56,12 +66,13 @@ jobs:
             TEPTRIS_LIBDIR="$PWD/libteptris-src/build/src" \
             /tmp/head/bin/pip install -q --no-build-isolation .
 
-      - name: Install the latest published wheel into venv B
+      - name: Install the latest release's sdist into venv B
         run: |
           python3 -m venv /tmp/prev
           V=$(curl -s https://pypi.org/pypi/teptris/json | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])")
-          echo "prev wheel: $V"
-          /tmp/prev/bin/pip install -q "teptris==$V"
+          echo "prev sdist: $V"
+          /tmp/prev/bin/pip download -q "teptris==$V" --no-binary :all: --no-deps -d /tmp/prevsrc
+          /tmp/prev/bin/pip install -q --no-build-isolation /tmp/prevsrc/teptris-*.tar.gz
 
       - name: Bench previous vs HEAD
         run: |
