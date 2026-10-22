@@ -3,7 +3,7 @@ name: cibuildwheel
 # Wheels: the floor is 3.10, so every wheel is version-specific
 # (cp3NN-cp3NN) and builds against the full C API (closes #20's
 # coverage goal at a 3.10 floor).
-# CPython >= 3.9. Linux cells build the C archive INSIDE each container
+# CPython >= 3.10. Linux cells build the C archive INSIDE each container
 # (manylinux and musllinux must link their own libc); macOS and Windows
 # build on the runner once (PGO: clang/gcc via the C core script,
 # MSVC via the trained pgd). The module links
@@ -42,10 +42,10 @@ jobs:
       # self-test: install FROM the tarball and round-trip — the
       # 0.2.15 broken-sdist class must die here, not on users
       # (absolute paths slipped past a 3.12-only verification once)
-      - name: Self-test the sdist (3.9, strict)
+      - name: Self-test the sdist (3.10, strict)
         uses: actions/setup-python@v7
         with:
-          python-version: '3.9'
+          python-version: '3.10'
       - run: |
           python3 -m pip install -q virtualenv
           python3 -m virtualenv /tmp/sdt && /tmp/sdt/bin/python -m pip install -q dist/*.tar.gz

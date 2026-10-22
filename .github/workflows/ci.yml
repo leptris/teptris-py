@@ -20,18 +20,19 @@ jobs:
         # MSVC x64 with the full PGO train/use chain (the exact steps the
         # release runs — a broken PGO stage must fail here, not at tag time)
         include:
-          # 3.12 primary + the 3.9 abi3 floor where it ships; both
-          # macOS arches (macos-latest = arm64, macos-15-intel = amd64)
+          # 3.12 primary + the 3.10 floor (the oldest supported
+          # CPython); both macOS arches (macos-latest = arm64,
+          # macos-15-intel = amd64)
           - { os: macos-latest,     python-version: '3.12' }
           - { os: macos-15-intel,   python-version: '3.12' }
-          - { os: macos-15-intel,   python-version: '3.9' }
+          - { os: macos-15-intel,   python-version: '3.10' }
           - { os: ubuntu-latest,    python-version: '3.12' }
-          - { os: ubuntu-latest,    python-version: '3.9' }
+          - { os: ubuntu-latest,    python-version: '3.10' }
           - { os: ubuntu-24.04-arm, python-version: '3.12' }
           - { os: windows-latest,   python-version: '3.12' }
           # Windows ARM64: the win_arm64 wheel's build flavor
           - { os: windows-11-arm,  python-version: '3.12' }
-          - { os: windows-latest,   python-version: '3.9' }
+          - { os: windows-latest,   python-version: '3.10' }
     steps:
       - uses: actions/checkout@v7
 
@@ -155,7 +156,7 @@ jobs:
       - name: Build + round-trip in Alpine container
         run: |
           docker run --rm -v "$PWD:/work" \
-            -w /work python:3.9-alpine sh -c '
+            -w /work python:3.10-alpine sh -c '
               set -eux
               apk add --no-cache build-base bash cmake
               cmake -B /tmp/lib -S /work/libteptris-src \
