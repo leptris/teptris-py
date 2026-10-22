@@ -69,6 +69,8 @@ jobs:
       - name: Install the latest release's sdist into venv B
         run: |
           python3 -m venv /tmp/prev
+          # the sdist build needs setuptools in the venv (--no-build-isolation)
+          /tmp/prev/bin/pip install -q "setuptools>=61" wheel
           V=$(curl -s https://pypi.org/pypi/teptris/json | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])")
           echo "prev sdist: $V"
           /tmp/prev/bin/pip download -q "teptris==$V" --no-binary :all: --no-deps -d /tmp/prevsrc
