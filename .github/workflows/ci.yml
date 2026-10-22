@@ -193,7 +193,9 @@ jobs:
       - name: cibuildwheel (armv7l, both libcs)
         uses: pypa/cibuildwheel@v3.0.1
         env:
-          CIBW_BUILD: "cp39-manylinux_armv7l cp39-musllinux_armv7l"
+          # the floor is 3.10: one cp312 wheel per libc (the emulated
+          # cells' convention - other minors resolve to the sdist)
+          CIBW_BUILD: "cp312-manylinux_armv7l cp312-musllinux_armv7l"
           CIBW_ARCHS_LINUX: armv7l
           CIBW_ENVIRONMENT: >-
             TEPTRIS_INCLUDE=libteptris-src/src/include
