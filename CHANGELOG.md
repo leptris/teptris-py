@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.8.1 (2026-10-23)
+
+- **Engine v0.3.8**: duplicate-key errors name the enclosing table
+  (`duplicate key 'x' in table 'a'` — header-path span, zero-copy)
+  plus the Phase-5 error-message audit (ERRORS.md in the engine
+  repo). Version = {engine 0.3.8}.{iteration 1}; the pin moves in
+  the same PR (family law). No binding-source changes.
+
 ## 0.3.7.3 (2026-10-22)
 
 - **The floor rises to CPython >= 3.10** (owner decision): the

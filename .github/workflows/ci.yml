@@ -152,7 +152,7 @@ jobs:
         with:
           repository: leptris/teptris
           path: libteptris-src
-          ref: v0.3.7
+          ref: v0.3.8
       - name: Build + round-trip in Alpine container
         run: |
           docker run --rm -v "$PWD:/work" \
@@ -185,7 +185,7 @@ jobs:
         with:
           repository: leptris/teptris
           path: libteptris-src
-          ref: v0.3.7
+          ref: v0.3.8
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
@@ -223,7 +223,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: leptris/teptris
-          ref: v0.3.7
+          ref: v0.3.8
           path: engine
       - uses: actions/setup-python@v7
         with:
