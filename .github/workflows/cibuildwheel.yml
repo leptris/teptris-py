@@ -139,7 +139,7 @@ jobs:
         with:
           repository: leptris/teptris
           path: libteptris-src
-          ref: v0.3.8
+          ref: v0.3.9
 
       - uses: actions/setup-python@v7
         with:
