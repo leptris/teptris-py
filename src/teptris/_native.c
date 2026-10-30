@@ -902,7 +902,12 @@ static void ob_dt(obuf *b, uint8_t kind, const teptris_datetime *dt) {
 }
 
 static int w_scalar(obuf *b, const char *key, size_t klen, PyObject *v) {
-    ob_key(b, key, klen);
+    /* array ELEMENTS carry no key op (writer grammar v0.3.11): the old
+     * klen-0 marker now means a genuine empty key, and a stale pending
+     * key inside an array trips the inline-element guard */
+    if (key != NULL) {
+        ob_key(b, key, klen);
+    }
     if (PyBool_Check(v)) {
         ob_byte(b, v == Py_True ? 0x06 : 0x05);
         return 0;
