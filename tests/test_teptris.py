@@ -47,6 +47,15 @@ class Loads(unittest.TestCase):
                "aot": [{"n": 1}, {"n": 2}], "f": 1.5}
         self.assertEqual(teptris.loads(teptris.dumps(obj)), obj)
 
+    def test_dumps_mixed_array_regression(self):
+        # the engine writer v0.3.10 read the array-element null-key
+        # marker as a genuine empty key; the stale pending key then
+        # tripped the inline-element guard ([1, {c = "x"}] failed
+        # ERR_ARG). Grammar v0.3.11: array elements carry no key op.
+        obj = {"b": [1, {"c": "x"}]}
+        self.assertEqual(teptris.dumps(obj), "b = [1, {c = 'x'}]\n")
+        self.assertEqual(teptris.loads(teptris.dumps(obj)), obj)
+
     def test_dumps_empty_key(self):
         # quoted empty keys are legal TOML (parse side accepted '' = 1
         # all along); the writer op-stream used to conflate the empty
