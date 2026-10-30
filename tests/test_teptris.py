@@ -47,6 +47,16 @@ class Loads(unittest.TestCase):
                "aot": [{"n": 1}, {"n": 2}], "f": 1.5}
         self.assertEqual(teptris.loads(teptris.dumps(obj)), obj)
 
+    def test_dumps_empty_key(self):
+        # quoted empty keys are legal TOML (parse side accepted '' = 1
+        # all along); the writer op-stream used to conflate the empty
+        # key with no pending key and fail ERR_ARG (engine v0.3.10 fix)
+        self.assertEqual(teptris.dumps({"": 1}), "'' = 1\n")
+        self.assertEqual(teptris.loads("'' = 1\n"), {"": 1})
+        self.assertEqual(
+            teptris.dumps({"m": {"": 1, "b": 2}}),
+            "'' = 1\nb = 2\n")
+
     def test_bytes_input(self):
         self.assertEqual(teptris.loads(b"a = 1"), {"a": 1})
 
