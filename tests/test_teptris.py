@@ -55,7 +55,7 @@ class Loads(unittest.TestCase):
         self.assertEqual(teptris.loads("'' = 1\n"), {"": 1})
         self.assertEqual(
             teptris.dumps({"m": {"": 1, "b": 2}}),
-            "'' = 1\nb = 2\n")
+            "[m]\n'' = 1\nb = 2\n")
 
     def test_bytes_input(self):
         self.assertEqual(teptris.loads(b"a = 1"), {"a": 1})
