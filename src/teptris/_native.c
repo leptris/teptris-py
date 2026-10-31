@@ -1163,6 +1163,37 @@ static PyObject *ext_version(PyObject *self, PyObject *ignored) {
     return PyUnicode_FromString(teptris_version_string());
 }
 
+/* Format-preserving edit: rewrite exactly the value bytes of one
+ * key = value line; every other byte of the source survives. */
+static PyObject *ext_edit(PyObject *self, PyObject *args) {
+    (void)self;
+    const char *src;
+    Py_ssize_t src_len;
+    const char *keypath;
+    const char *replacement;
+    if (!PyArg_ParseTuple(args, "s#ss:edit", &src, &src_len, &keypath,
+                          &replacement)) {
+        return NULL;
+    }
+    char *buf = NULL;
+    size_t out_len = 0;
+    teptris_status st = teptris_edit_scalar(src, (size_t)src_len, keypath,
+                                            replacement, &buf, &out_len);
+    if (st != TEPTRIS_OK) {
+        if (buf != NULL) {
+            free(buf);
+        }
+        PyErr_SetString(PyExc_ValueError,
+                        (st == TEPTRIS_ERR_STATE)
+                            ? "edit: key not found"
+                            : "edit: malformed key path or replacement");
+        return NULL;
+    }
+    PyObject *out = PyUnicode_DecodeUTF8(buf, (Py_ssize_t)out_len, NULL);
+    free(buf);
+    return out;
+}
+
 
 /* ----------------------------------------------------------- plan -- *
  * Descriptor mode — the py twin of teptris-ruby's Teptris::Descriptor
@@ -1658,6 +1689,10 @@ static PyMethodDef methods[] = {
      "RFC 3339 datetimes, non-finite floats as null)."},
     {"engine_version", ext_version, METH_NOARGS,
      "Return the libteptris engine version string."},
+    {"edit", ext_edit, METH_VARARGS,
+     "edit(source, key_path, replacement) -> str: rewrite exactly the "
+     "value bytes of one key = value line; every other byte survives. "
+     "ValueError on an absent key or a malformed span/replacement."},
     {"plan_build", ext_plan_build, METH_VARARGS,
      "Compile a Descriptor plan (rows, first_row)."},
     {"plan_emit", ext_plan_emit, METH_VARARGS,

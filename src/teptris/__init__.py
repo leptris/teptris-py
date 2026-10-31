@@ -45,6 +45,7 @@ from ._native import loads as _loads
 from ._native import loads_batch as _loads_batch
 from ._native import loads_doc as _loads_doc
 from ._native import loads_lazy as _loads_lazy
+from ._native import edit as _edit_native
 
 TomlInput = Union[str, bytes, bytearray]
 
@@ -94,6 +95,18 @@ def loads(data: TomlInput) -> dict[str, Any]:
         return _loads(bytes(data))
     except _DecodeError as e:
         raise _decode_error(e) from None
+
+
+def edit(source: str, key_path: str, replacement: str) -> str:
+    """Format-preserving edit: rewrite exactly the value bytes of one
+    key = value line; every other byte of the source survives
+    (comments, blank lines, formatting, CRLF endings). ``key_path``
+    may carry a ``[table]`` prefix (``"t.x"`` edits x inside ``[t]``);
+    ``replacement`` is the value's TEXT, validated by the engine.
+    Multiline strings and inline collections splice (parse-verified).
+    Raises ValueError on an absent key or a malformed
+    span/replacement."""
+    return _edit_native(source, key_path, replacement)
 
 
 def loads_batch(docs: Sequence[TomlInput]) -> list[dict[str, Any]]:
