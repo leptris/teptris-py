@@ -40,12 +40,12 @@ def dumps(obj: Any) -> str:
             "nesting too deep (> 512; the value's nesting exceeds the "
             "engine ceiling)"
         ) from exc
+from ._native import edit as _edit_native
 from ._native import engine_version as _engine_version
 from ._native import loads as _loads
 from ._native import loads_batch as _loads_batch
 from ._native import loads_doc as _loads_doc
 from ._native import loads_lazy as _loads_lazy
-from ._native import edit as _edit_native
 
 TomlInput = Union[str, bytes, bytearray]
 
