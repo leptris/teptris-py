@@ -35,7 +35,6 @@ def edit(source: str, key_path: str, replacement: str) -> str:
     """Rewrite exactly the value bytes of one key = value line; every
     other byte of the source survives. ValueError on an absent key or
     a malformed span/replacement."""
-    ...
 def plan_build(rows: list[list[Any]],
                first_row: list[int]) -> object: ...
 def plan_emit(plan: object,
