@@ -47,6 +47,16 @@ class Loads(unittest.TestCase):
                "aot": [{"n": 1}, {"n": 2}], "f": 1.5}
         self.assertEqual(teptris.loads(teptris.dumps(obj)), obj)
 
+    def test_dumps_depth_named_error(self):
+        # the C walk raises Python's bare RecursionError; the wrapper
+        # names the engine's 512 ceiling (matches ruby's contract)
+        deep = {"v": 1}
+        for _ in range(5000):
+            deep = {"n": deep}
+        with self.assertRaises(ValueError) as cm:
+            teptris.dumps(deep)
+        self.assertIn("nesting too deep", str(cm.exception))
+
     def test_dumps_mixed_array_regression(self):
         # the engine writer v0.3.10 read the array-element null-key
         # marker as a genuine empty key; the stale pending key then
