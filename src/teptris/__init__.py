@@ -24,8 +24,22 @@ except PackageNotFoundError:  # running from a source tree
     __version__ = "0.0.0.dev0"
 
 from ._native import DecodeError as _DecodeError
-from ._native import LazyNode, dumps, dumps_json_natural
+from ._native import LazyNode, dumps_json_natural
+from ._native import dumps as _dumps_native
 from ._native import dumps_doc as _dumps_doc
+
+
+def dumps(obj: Any) -> str:
+    # name the engine's 512 ceiling: the C walk raises Python's bare
+    # RecursionError, which reads as a host bug rather than a
+    # document shape (ruby's binding names it the same way)
+    try:
+        return _dumps_native(obj)
+    except RecursionError as exc:
+        raise ValueError(
+            "nesting too deep (> 512; the value's nesting exceeds the "
+            "engine ceiling)"
+        ) from exc
 from ._native import engine_version as _engine_version
 from ._native import loads as _loads
 from ._native import loads_batch as _loads_batch
