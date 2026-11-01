@@ -25,6 +25,20 @@ implements the TOML 1.1 draft grammar (a strict superset of 1.0)
 with 100% toml-test conformance, and parses at ≥3× the best C/C++
 competitor on every shape.
 
+`teptris.edit(source, key_path, replacement)` is the format-preserving
+edit (engine 0.3.16+): rewrites exactly the value bytes of one
+`key = value` line — comments, blank lines, formatting and CRLF
+endings survive. Dotted paths address the key (a `[table]` prefix
+matches the open section); multiline strings and inline collections
+splice (parse-verified). Raises `ValueError` on an absent key or a
+malformed span/replacement:
+
+```python
+import teptris
+teptris.edit('# conf\n[serve]\nport = 8080  # keep\n', 'serve.port', '9090')
+# '# conf\n[serve]\nport = 9090  # keep\n'
+```
+
 ## Performance (end-to-end, Python tier)
 
 Best-of-12 runs on a GitHub ubuntu-latest runner (python 3.12),
