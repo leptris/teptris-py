@@ -31,5 +31,23 @@ class EditTest(unittest.TestCase):
             teptris.edit("a = 1\n", "a", "@@@")
 
 
+class EditV3Test(unittest.TestCase):
+    """engine v0.3.17: dotted key lines continuing the open section."""
+
+    def test_dotted_under_section(self):
+        src = '[[items]]\na.b = 1\n\n[[items]]\nname = "y"\n'
+        self.assertEqual(
+            teptris.edit(src, "items.a.b", "2"),
+            '[[items]]\na.b = 2\n\n[[items]]\nname = "y"\n',
+        )
+
+    def test_first_match_when_headers_repeat(self):
+        src = '[[items]]\nname = "x"\n\n[[items]]\nname = "y"\n'
+        self.assertEqual(
+            teptris.edit(src, "items.name", '"z"'),
+            '[[items]]\nname = "z"\n\n[[items]]\nname = "y"\n',
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
