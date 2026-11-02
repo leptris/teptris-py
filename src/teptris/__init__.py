@@ -119,6 +119,8 @@ class Schema:
     def validate(self, data: TomlInput) -> list[dict[str, Any]]:
         import json
 
+        if isinstance(data, bytearray):
+            data = bytes(data)
         try:
             raw = json.loads(_schema_validate(self._handle, data))
         except _DecodeError as e:
