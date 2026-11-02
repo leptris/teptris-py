@@ -27,6 +27,8 @@ from ._native import DecodeError as _DecodeError
 from ._native import LazyNode, dumps_json_natural
 from ._native import dumps as _dumps_native
 from ._native import dumps_doc as _dumps_doc
+from ._native import compile_schema as _compile_schema
+from ._native import schema_validate as _schema_validate
 
 
 def dumps(obj: Any) -> str:
@@ -95,6 +97,51 @@ def loads(data: TomlInput) -> dict[str, Any]:
         return _loads(bytes(data))
     except _DecodeError as e:
         raise _decode_error(e) from None
+
+
+class Schema:
+    """A compiled JSON Schema (the 2020-12 practical subset; the four
+    TOML/JSON policies are engine contract — ``SCHEMAS.md`` in
+    libteptris). Compile once, validate many; the engine handle is a
+    capsule freed with the object.
+
+    ``validate(toml)`` returns one dict per violation with keys
+    ``path`` / ``schema_path`` / ``message`` (empty list = valid);
+    ``valid(toml)`` is the boolean form. Documents that do not parse
+    raise ``TOMLDecodeError``.
+    """
+
+    __slots__ = ("_handle",)
+
+    def __init__(self, handle: Any) -> None:
+        self._handle = handle
+
+    def validate(self, data: TomlInput) -> list[dict[str, Any]]:
+        import json
+
+        try:
+            raw = json.loads(_schema_validate(self._handle, data))
+        except _DecodeError as e:
+            raise _decode_error(e) from None
+        return [
+            {
+                "path": v["path"],
+                "schema_path": v["schemaPath"],
+                "message": v["message"],
+            }
+            for v in raw
+        ]
+
+    def valid(self, data: TomlInput) -> bool:
+        return len(self.validate(data)) == 0
+
+
+def compile_schema(schema_json: str) -> Schema:
+    """Compile a JSON Schema for repeated validation. Raises
+    ValueError carrying the engine's diag JSON when the schema is
+    rejected - unsupported constructs are named, never silently
+    ignored."""
+    return Schema(_compile_schema(schema_json))
 
 
 def edit(source: str, key_path: str, replacement: str) -> str:

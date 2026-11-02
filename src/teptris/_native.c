@@ -14,6 +14,7 @@ shape where only a small subset of the tree is touched (teptris#79). */
  * datetime.h fast paths). */
 #include <Python.h>
 #include <Python.h>
+#include "teptris/schema.h"
 #include "teptris/teptris.h"
 
 /* Borrowed UTF-8 access for dump keys and string values: the floor
@@ -1671,6 +1672,9 @@ static PyObject *ext_dumps_doc(PyObject *self, PyObject *cap) {
     return out;
 }
 
+static PyObject *ext_schema_compile(PyObject *self, PyObject *args);
+static PyObject *ext_schema_validate(PyObject *self, PyObject *args);
+
 static PyMethodDef methods[] = {
     {"loads", ext_load, METH_VARARGS, "Parse TOML into Python objects."},
     {"loads_batch", ext_loads_batch, METH_O,
@@ -1693,6 +1697,14 @@ static PyMethodDef methods[] = {
      "edit(source, key_path, replacement) -> str: rewrite exactly the "
      "value bytes of one key = value line; every other byte survives. "
      "ValueError on an absent key or a malformed span/replacement."},
+    {"compile_schema", ext_schema_compile, METH_VARARGS,
+     "compile_schema(json) -> Schema capsule: compile the JSON Schema "
+     "2020-12 practical subset (compile once, validate many). "
+     "ValueError with the engine diag on unsupported constructs."},
+    {"schema_validate", ext_schema_validate, METH_VARARGS,
+     "schema_validate(sch, toml) -> str: the engine's JSON array of "
+     "{path, schemaPath, message} objects ([] = valid). "
+     "DecodeError when the document does not parse."},
     {"plan_build", ext_plan_build, METH_VARARGS,
      "Compile a Descriptor plan (rows, first_row)."},
     {"plan_emit", ext_plan_emit, METH_VARARGS,
@@ -1739,4 +1751,95 @@ PyMODINIT_FUNC PyInit__native(void) {
     PyModule_AddObject(m, "LazyNode", (PyObject *)LazyNodeType);
     PyModule_AddObject(m, "LazyOwner", (PyObject *)LazyOwnerType);
     return m;
+}
+/* ---- schema validation (engine 0.3.20) ---------------------------
+ * compile_schema(json) -> Schema capsule; schema_validate(sch, toml)
+ * -> the engine's JSON array string ("[]" = valid). Compile failures
+ * raise ValueError carrying the engine's diag JSON (unsupported
+ * constructs are named, never silently ignored); documents that do
+ * not parse raise DecodeError. */
+
+static void schema_capsule_destructor(PyObject *cap)
+{
+    teptris_schema *sch = (teptris_schema *)PyCapsule_GetPointer(
+        cap, "teptris.schema");
+    if (sch) {
+        teptris_schema_free(sch);
+    }
+}
+
+static PyObject *ext_schema_compile(PyObject *self, PyObject *args)
+{
+    const char *json;
+    Py_ssize_t len;
+    if (!PyArg_ParseTuple(args, "s#", &json, &len)) {
+        return NULL;
+    }
+    teptris_schema *sch = NULL;
+    char *diag = NULL;
+    size_t diag_len = 0;
+    teptris_status st =
+        teptris_schema_compile(json, (size_t)len, &sch, &diag, &diag_len);
+    if (st != TEPTRIS_OK || sch == NULL) {
+        PyObject *msg = PyUnicode_FromStringAndSize(
+            diag != NULL ? diag : "invalid schema",
+            diag != NULL ? (Py_ssize_t)diag_len : -1);
+        teptris_diag_free(diag);
+        if (sch != NULL) teptris_schema_free(sch);
+        if (msg == NULL) {
+            PyErr_SetString(PyExc_ValueError, "schema rejected");
+        }
+        else {
+            PyObject *fmt = PyUnicode_FromString("schema rejected: %s");
+            PyObject *ex = fmt ? PyObject_CallFunction(
+                PyExc_ValueError, "S", msg) : NULL;
+            Py_XDECREF(fmt);
+            Py_DECREF(msg);
+            if (ex == NULL) return NULL;
+            PyErr_SetObject(PyExc_ValueError, ex);
+            Py_DECREF(ex);
+        }
+        return NULL;
+    }
+    PyObject *cap = PyCapsule_New(sch, "teptris.schema",
+                                  schema_capsule_destructor);
+    if (cap == NULL) {
+        teptris_schema_free(sch);
+        return NULL;
+    }
+    return cap;
+}
+
+static PyObject *ext_schema_validate(PyObject *self, PyObject *args)
+{
+    PyObject *cap;
+    const char *toml;
+    Py_ssize_t len;
+    if (!PyArg_ParseTuple(args, "Os#", &cap, &toml, &len)) {
+        return NULL;
+    }
+    teptris_schema *sch = (teptris_schema *)PyCapsule_GetPointer(
+        cap, "teptris.schema");
+    if (sch == NULL) {
+        return NULL;
+    }
+    char *buf = NULL;
+    size_t out_len = 0;
+    teptris_status st = teptris_schema_validate(sch, toml, (size_t)len,
+                                                &buf, &out_len);
+    if (st == TEPTRIS_ERR_SYNTAX || st == TEPTRIS_ERR_SEMANTIC ||
+        st == TEPTRIS_ERR_ENCODING || st == TEPTRIS_ERR_DEPTH) {
+        PyErr_SetString(TomlDecodeError,
+                        teptris_status_string(st));
+        return NULL;
+    }
+    if (st != TEPTRIS_OK) {
+        PyErr_Format(PyExc_RuntimeError, "validation failed (status %d)",
+                     (int)st);
+        return NULL;
+    }
+    PyObject *out = PyUnicode_DecodeUTF8(buf, (Py_ssize_t)out_len,
+                                         "strict");
+    free(buf);
+    return out;
 }

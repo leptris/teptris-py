@@ -39,6 +39,25 @@ teptris.edit('# conf\n[serve]\nport = 8080  # keep\n', 'serve.port', '9090')
 # '# conf\n[serve]\nport = 9090  # keep\n'
 ```
 
+## Schema validation (engine 0.3.20+)
+
+`teptris.compile_schema(json)` compiles the JSON Schema 2020-12
+practical subset once; the handle validates many documents (the four
+TOML/JSON policies are engine contract — `SCHEMAS.md` in libteptris).
+Violations come back as dicts with `path` / `schema_path` / `message`;
+documents that do not parse raise `TOMLDecodeError`.
+
+```python
+schema = teptris.compile_schema('{"properties":{"port":{"type":"integer"}}}')
+schema.validate('port = "x"\n')
+# [{'path': 'port', 'schema_path': '#/properties.port',
+#   'message': 'expected a matching type, found string'}]
+schema.valid('port = 8080\n')  # True
+```
+
+Compile failures raise `ValueError` carrying the engine's diag JSON
+(unsupported constructs are named, never silently ignored).
+
 ## Performance (end-to-end, Python tier)
 
 Best-of-12 runs on a GitHub ubuntu-latest runner (python 3.12),
