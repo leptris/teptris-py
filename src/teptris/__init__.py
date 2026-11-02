@@ -23,9 +23,9 @@ try:
 except PackageNotFoundError:  # running from a source tree
     __version__ = "0.0.0.dev0"
 
-from ._native import compile_schema as _compile_schema
 from ._native import DecodeError as _DecodeError
 from ._native import LazyNode, dumps_json_natural
+from ._native import compile_schema as _compile_schema
 from ._native import dumps as _dumps_native
 from ._native import dumps_doc as _dumps_doc
 from ._native import schema_validate as _schema_validate
