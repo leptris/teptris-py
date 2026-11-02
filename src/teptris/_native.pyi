@@ -35,6 +35,11 @@ def edit(source: str, key_path: str, replacement: str) -> str:
     """Rewrite exactly the value bytes of one key = value line; every
     other byte of the source survives. ValueError on an absent key or
     a malformed span/replacement."""
+def compile_schema(schema_json: str) -> object:
+    """Compile a JSON Schema; the handle is an opaque capsule."""
+def schema_validate(sch: object, toml: str | bytes) -> str:
+    """The engine's JSON array of {path, schemaPath, message} objects
+    ([] = valid)."""
 def plan_build(rows: list[list[Any]],
                first_row: list[int]) -> object: ...
 def plan_emit(plan: object,
