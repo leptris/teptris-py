@@ -106,3 +106,49 @@ class SchemaTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TaploParityTest(unittest.TestCase):
+    """The engine-0.3.21 surface: draft-07 keywords taplo's lens
+    cannot reach plus the exact-decimal multipleOf."""
+
+    def test_dependencies_both_forms(self):
+        deps = teptris.compile_schema(
+            '{"dependencies":{"credit_card":["billing_address"]}}'
+        )
+        self.assertEqual(len(deps.validate("a = 1\ncredit_card = 1\n")), 1)
+        self.assertIs(
+            deps.valid("credit_card = 1\nbilling_address = 'x'\n"), True
+        )
+        schema_form = teptris.compile_schema(
+            '{"dependencies":{"credit_card":{"required":["b"]}}}'
+        )
+        self.assertEqual(len(schema_form.validate("credit_card = 1\n")), 1)
+
+    def test_tuple_items_and_additional_items(self):
+        tuple_ = teptris.compile_schema(
+            '{"properties":{"t":{"items":[{"type":"string"}],'
+            '"additionalItems":false}}}'
+        )
+        self.assertIs(tuple_.valid("t = ['x']\n"), True)
+        self.assertEqual(len(tuple_.validate("t = ['x', 1]\n")), 1)
+
+    def test_multiple_of_is_exact_across_decimals(self):
+        mult = teptris.compile_schema(
+            '{"properties":{"k":{"multipleOf":0.1}}}'
+        )
+        self.assertIs(mult.valid("k = 0.3\n"), True)
+        self.assertIs(mult.valid("k = 0.35\n"), False)
+
+    def test_formats_taplo_cannot_enforce(self):
+        uuid = teptris.compile_schema(
+            '{"properties":{"k":{"format":"uuid"}}}'
+        )
+        self.assertIs(
+            uuid.valid("k = '123e4567-e89b-12d3-a456-426614174000'\n"), True
+        )
+        self.assertIs(uuid.valid("k = 'nope'\n"), False)
+        req = teptris.compile_schema(
+            '{"properties":{"k":{"format":"semver-requirement"}}}'
+        )
+        self.assertIs(req.valid("k = '^1.2'\n"), True)
+        self.assertIs(req.valid("k = 'not a req'\n"), False)
