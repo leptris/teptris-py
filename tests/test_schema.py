@@ -196,3 +196,23 @@ class SotaSurfaceTest(unittest.TestCase):
         )
         self.assertIs(local.valid("k = 07:32:00\n"), True)
         self.assertIs(local.valid("k = '07:32:00Z'\n"), False)
+
+
+class BuiltInMetaschemaTest(unittest.TestCase):
+    """The vendored metaschemas resolve in memory since engine 0.3.23."""
+
+    def test_metaschema_ref_compiles_and_validates(self):
+        schema = teptris.compile_schema(
+            '{"$ref":"https://json-schema.org/draft/2020-12/schema"}'
+        )
+        self.assertEqual(len(schema.validate('type = "string"\n')), 0)
+        self.assertEqual(len(schema.validate("type = 123\n")), 1)
+
+    def test_draft07_empty_fragment_form(self):
+        schema = teptris.compile_schema(
+            '{"$ref":"http://json-schema.org/draft-07/schema#"}'
+        )
+        self.assertEqual(len(schema.validate('description = "d"\n')), 0)
+
+    def test_engine_version(self):
+        self.assertEqual(teptris.engine_version(), "0.3.23")
