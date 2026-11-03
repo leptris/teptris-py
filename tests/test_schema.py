@@ -64,7 +64,9 @@ class SchemaTest(unittest.TestCase):
     def test_the_four_policies(self):
         strict = teptris.compile_schema('{"properties":{"k":{"enum":[1]}}}')
         self.assertIs(strict.valid("k = 1\n"), True)
-        self.assertIs(strict.valid("k = 1.0\n"), False)  # float never integer
+        # 2020-12 numeric identity since engine 0.3.23: enum [1] matches 1.0
+        self.assertIs(strict.valid("k = 1.0\n"), True)
+        self.assertIs(strict.valid("k = 1.5\n"), False)
 
         dt = teptris.compile_schema(
             '{"properties":{"k":{"type":"string","format":"date-time"}}}'
