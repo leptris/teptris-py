@@ -40,8 +40,9 @@ class SchemaTest(unittest.TestCase):
         self.assertIs(schema.valid("port = 1\n"), False)
 
     def test_unsupported_constructs_named_at_compile(self):
-        with self.assertRaises(ValueError, msg="unevaluatedProperties"):
-            teptris.compile_schema('{"unevaluatedProperties":false}')
+        # unevaluatedProperties is enforced since engine 0.3.22
+        schema = teptris.compile_schema('{"unevaluatedProperties":false}')
+        self.assertEqual(len(schema.validate("a = 1\n")), 1)
         try:
             teptris.compile_schema('{"$ref":"https://x.example/s.json"}')
             self.fail("remote $ref must be rejected")
@@ -152,3 +153,46 @@ class TaploParityTest(unittest.TestCase):
         )
         self.assertIs(req.valid("k = '^1.2'\n"), True)
         self.assertIs(req.valid("k = 'not a req'\n"), False)
+
+
+class SotaSurfaceTest(unittest.TestCase):
+    """The engine-0.3.22 surface: the unevaluated* annotation model,
+    dynamic refs, contentSchema, and the TOML-native local formats."""
+
+    def test_unevaluated_properties_cousin_rule(self):
+        cousin = teptris.compile_schema(
+            '{"allOf":[{"properties":{"a":{}}},'
+            '{"unevaluatedProperties":false}]}'
+        )
+        self.assertEqual(len(cousin.validate("a = 1\n")), 1)
+
+        adjacent = teptris.compile_schema(
+            '{"properties":{"a":{}},"unevaluatedProperties":false}'
+        )
+        self.assertIs(adjacent.valid("a = 1\n"), True)
+        self.assertIs(adjacent.valid("a = 1\nb = 2\n"), False)
+
+    def test_dynamic_ref_innermost_anchor(self):
+        tree = teptris.compile_schema(
+            '{"$dynamicAnchor":"node","type":"object","properties":'
+            '{"value":{"type":"integer"},"children":{"type":"array",'
+            '"items":{"$dynamicRef":"#node"}}}}'
+        )
+        self.assertIs(tree.valid("value = 1\n[[children]]\nvalue = 2\n"), True)
+        self.assertIs(tree.valid("value = 1\n[[children]]\nvalue = 'x'\n"), False)
+
+    def test_content_schema_asserts_decoded_content(self):
+        content = teptris.compile_schema(
+            '{"properties":{"k":{"contentEncoding":"base64",'
+            '"contentMediaType":"application/json",'
+            '"contentSchema":{"type":"object","required":["n"]}}}}'
+        )
+        self.assertIs(content.valid("k = 'eyJuIjogMX0='\n"), True)
+        self.assertIs(content.valid("k = 'W10='\n"), False)
+
+    def test_toml_native_local_formats(self):
+        local = teptris.compile_schema(
+            '{"properties":{"k":{"format":"time-local"}}}'
+        )
+        self.assertIs(local.valid("k = 07:32:00\n"), True)
+        self.assertIs(local.valid("k = '07:32:00Z'\n"), False)
