@@ -216,5 +216,17 @@ class BuiltInMetaschemaTest(unittest.TestCase):
         )
         self.assertEqual(len(schema.validate('description = "d"\n')), 0)
 
+    def test_unicode_property_escapes(self):
+        # \p{...} since engine 0.3.24
+        letter = teptris.compile_schema(
+            '{"properties":{"k":{"pattern":"^\\\\p{Letter}+$"}}}'
+        )
+        self.assertEqual(len(letter.validate('k = "\u03c0"\n')), 0)
+        self.assertEqual(len(letter.validate("k = '123'\n")), 1)
+        neg = teptris.compile_schema(
+            '{"properties":{"k":{"pattern":"^\\\\P{Letter}+$"}}}'
+        )
+        self.assertEqual(len(neg.validate("k = '123'\n")), 0)
+
     def test_engine_version(self):
-        self.assertEqual(teptris.engine_version(), "0.3.23")
+        self.assertEqual(teptris.engine_version(), "0.3.24")
