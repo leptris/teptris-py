@@ -216,6 +216,24 @@ class BuiltInMetaschemaTest(unittest.TestCase):
         )
         self.assertEqual(len(schema.validate('description = "d"\n')), 0)
 
+    def test_dialect_gated_formats(self):
+        # engine 0.3.25: a declared dialect annotates format/content*,
+        # the no-dialect practical default asserts
+        plain = teptris.compile_schema(
+            '{"properties":{"k":{"format":"email"}}}'
+        )
+        self.assertEqual(len(plain.validate("k = '2962'\n")), 1)
+        anno = teptris.compile_schema(
+            '{"$schema":"https://json-schema.org/draft/2020-12/schema",'
+            '"properties":{"k":{"format":"email"}}}'
+        )
+        self.assertEqual(len(anno.validate("k = '2962'\n")), 0)
+        assertion = teptris.compile_schema(
+            '{"$schema":"https://json-schema.org/draft/2020-12/'
+            'format-assertion","properties":{"k":{"format":"email"}}}'
+        )
+        self.assertEqual(len(assertion.validate("k = '2962'\n")), 1)
+
     def test_unicode_property_escapes(self):
         # \p{...} since engine 0.3.24
         letter = teptris.compile_schema(
@@ -229,4 +247,4 @@ class BuiltInMetaschemaTest(unittest.TestCase):
         self.assertEqual(len(neg.validate("k = '123'\n")), 0)
 
     def test_engine_version(self):
-        self.assertEqual(teptris.engine_version(), "0.3.24")
+        self.assertEqual(teptris.engine_version(), "0.3.25")
