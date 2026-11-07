@@ -234,6 +234,15 @@ class BuiltInMetaschemaTest(unittest.TestCase):
         )
         self.assertEqual(len(assertion.validate("k = '2962'\n")), 1)
 
+    def test_long_plain_tail_after_escape(self):
+        # engine 0.3.26: the schema JSON reader sized the escaped-string
+        # rebuild from the plain prefix alone; a long plain tail after
+        # the first escape wrote past the arena block (fuzz finding)
+        schema = teptris.compile_schema(
+            '{"description":"A\\u00e9' + "B" * (128 * 1024) + '"}'
+        )
+        self.assertEqual(len(schema.validate("k = 1\n")), 0)
+
     def test_unicode_property_escapes(self):
         # \p{...} since engine 0.3.24
         letter = teptris.compile_schema(
