@@ -217,7 +217,7 @@ class BuiltInMetaschemaTest(unittest.TestCase):
         self.assertEqual(len(schema.validate('description = "d"\n')), 0)
 
     def test_dialect_gated_formats(self):
-        # engine 0.3.25: a declared dialect annotates format/content*,
+        # engine 0.3.26: a declared dialect annotates format/content*,
         # the no-dialect practical default asserts
         plain = teptris.compile_schema(
             '{"properties":{"k":{"format":"email"}}}'
@@ -256,4 +256,4 @@ class BuiltInMetaschemaTest(unittest.TestCase):
         self.assertEqual(len(neg.validate("k = '123'\n")), 0)
 
     def test_engine_version(self):
-        self.assertEqual(teptris.engine_version(), "0.3.25")
+        self.assertEqual(teptris.engine_version(), "0.3.26")
