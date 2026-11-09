@@ -256,4 +256,4 @@ class BuiltInMetaschemaTest(unittest.TestCase):
         self.assertEqual(len(neg.validate("k = '123'\n")), 0)
 
     def test_engine_version(self):
-        self.assertEqual(teptris.engine_version(), "0.3.26")
+        self.assertEqual(teptris.engine_version(), "0.3.27")
