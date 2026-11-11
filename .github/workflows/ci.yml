@@ -52,8 +52,13 @@ jobs:
         run: |
           python3 -m pip install -q "setuptools>=61" wheel build ninja
           case "$(uname -s)" in
-            Linux)  sudo apt-get update -qq && sudo apt-get install -y -qq cmake >/dev/null ;;
-            Darwin) brew install cmake ;;
+            # cmake rides pip first (PyPI): the runner apt mirror
+            # (azure.archive.ubuntu.com) has outage windows that took
+            # down whole release waves (2026-11-11); apt stays as the
+            # fallback for hosts without a pip-grade cmake wheel
+            Linux)  python3 -m pip install -q cmake \
+                      || { sudo apt-get update -qq && sudo apt-get install -y -qq cmake >/dev/null; } ;;
+            Darwin) command -v cmake >/dev/null || brew install cmake ;;
           esac
 
       - name: Build the C shared library with PGO (non-Windows)
