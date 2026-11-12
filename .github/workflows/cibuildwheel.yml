@@ -179,7 +179,9 @@ jobs:
           CIBW_ENABLE: cpython-prerelease
           CIBW_ARCHS_LINUX: ${{ matrix.archs || 'auto' }}
           CIBW_ARCHS_MACOS: ${{ runner.arch == 'ARM64' && 'arm64' || 'x86_64' }}
-          CIBW_ARCHS_WINDOWS: ${{ runner.arch == 'ARM64' && 'ARM64' || 'AMD64' }}
+          # the win32 cell targets x86 - the identifier only selects
+          # when the arch matches (AMD64 filters cp312-win32 out)
+          CIBW_ARCHS_WINDOWS: ${{ matrix.msvc_arch == 'x86' && 'x86' || (runner.arch == 'ARM64' && 'ARM64' || 'AMD64') }}
           CIBW_ENVIRONMENT: >-
             TEPTRIS_INCLUDE=libteptris-src/src/include
             TEPTRIS_LIBDIR=libteptris-src/build/src
