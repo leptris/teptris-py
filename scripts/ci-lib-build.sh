@@ -30,7 +30,9 @@ case "$(uname -s)" in
     VSWHERE="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
     VSPATH=$("$VSWHERE" -latest -products '*' -property installationPath)
     [ -n "$VSPATH" ] || { echo "vswhere found no VS install" >&2; exit 1; }
-    if [ "${RUNNER_ARCH:-}" = "ARM64" ]; then VSARCH=arm64; else VSARCH=amd64; fi
+    # TEPTRIS_MSVC_ARCH overrides the target (x86 = the win32 wheel
+    # cell); a non-amd64 target takes the plain-archive fallback below
+    if [ -n "${TEPTRIS_MSVC_ARCH:-}" ]; then VSARCH=$TEPTRIS_MSVC_ARCH; elif [ "${RUNNER_ARCH:-}" = "ARM64" ]; then VSARCH=arm64; else VSARCH=amd64; fi
     # generate a .cmd and run it: inline cmd //c strings get mangled by
     # msys quote conversion; a file sidesteps quoting entirely
     VCVARS=$(cygpath -w "$VSPATH/VC/Auxiliary/Build/vcvarsall.bat")
@@ -74,9 +76,10 @@ cmake --build $SRC\bplain || exit /b 1
 rem legacy path compat: ci.yml builds against libteptris-src/build/src
 xcopy /e /i /y $SRC\bplain $SRC\build || exit /b 1
 rem bstatic: /GL archive for the PGO-consuming version-specific link.
-rem ARM64 MSVC has NO PGO (LNK4256: not available in this edition) -
-rem fall back to the plain archive at the same path and skip training.
-if "$VSARCH" == "arm64" (
+rem ARM64 MSVC has NO PGO (LNK4256: not available in this edition), and
+rem the x86 (win32 wheel) cell rides plain by policy - both fall back
+rem to the plain archive at the same path and skip training.
+if "$VSARCH" != "amd64" (
   xcopy /e /i /y $SRC\bplain $SRC\bstatic || exit /b 1
   cd /d %CD% && exit /b 0
 )

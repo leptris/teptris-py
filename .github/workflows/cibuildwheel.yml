@@ -111,10 +111,10 @@ jobs:
           # old cp39-abi3 line (and its two-invocation split, which
           # existed because cibuildwheel skips later CPython builds
           # once an abi3 wheel exists) is gone with the 3.9 floor.
-          # Emulated cells (armv7/ppc64le/s390x) build ONE minor
-          # (cp312, the common server CPython): sextupling emulated
-          # builds is not worth the wall time, and the sdist covers
-          # the other minors by compiling at install.
+          # Emulated cells (armv7/ppc64le/s390x/riscv64/i686) build
+          # ONE minor (cp312, the common server CPython): sextupling
+          # emulated builds is not worth the wall time, and the sdist
+          # covers the other minors by compiling at install.
           - { os: ubuntu-latest,     builds: cp310-manylinux_x86_64 cp311-manylinux_x86_64 cp312-manylinux_x86_64 cp313-manylinux_x86_64 cp314-manylinux_x86_64 cp314t-manylinux_x86_64 }
           - { os: ubuntu-latest,     builds: cp310-musllinux_x86_64 cp311-musllinux_x86_64 cp312-musllinux_x86_64 cp313-musllinux_x86_64 cp314-musllinux_x86_64 cp314t-musllinux_x86_64 }
           # 32-bit ARM: no runners exist; CIBW_ARCHS_LINUX selects the
@@ -125,12 +125,20 @@ jobs:
           # big-endian server arches, emulated (qemu binfmt below)
           - { os: ubuntu-latest,     builds: cp312-manylinux_ppc64le, archs: ppc64le }
           - { os: ubuntu-latest,     builds: cp312-manylinux_s390x, archs: s390x }
+          # riscv64: qemu binfmt (the slowest leg - one minor only);
+          # i686 runs 32-bit containers on the x86_64 kernel, no binfmt
+          - { os: ubuntu-latest,     builds: cp312-manylinux_riscv64, archs: riscv64 }
+          - { os: ubuntu-latest,     builds: cp312-manylinux_i686, archs: i686 }
+          - { os: ubuntu-latest,     builds: cp312-musllinux_i686, archs: i686 }
           - { os: ubuntu-24.04-arm,  builds: cp310-manylinux_aarch64 cp311-manylinux_aarch64 cp312-manylinux_aarch64 cp313-manylinux_aarch64 cp314-manylinux_aarch64 cp314t-manylinux_aarch64 }
           - { os: ubuntu-24.04-arm,  builds: cp310-musllinux_aarch64 cp311-musllinux_aarch64 cp312-musllinux_aarch64 cp313-musllinux_aarch64 cp314-musllinux_aarch64 cp314t-musllinux_aarch64 }
           - { os: macos-latest,      builds: cp310-macosx_arm64 cp311-macosx_arm64 cp312-macosx_arm64 cp313-macosx_arm64 cp314-macosx_arm64 cp314t-macosx_arm64 }
           - { os: macos-15-intel,    builds: cp310-macosx_x86_64 cp311-macosx_x86_64 cp312-macosx_x86_64 cp313-macosx_x86_64 cp314-macosx_x86_64 cp314t-macosx_x86_64 }
           - { os: windows-latest,    builds: cp310-win_amd64 cp311-win_amd64 cp312-win_amd64 cp313-win_amd64 cp314-win_amd64 cp314t-win_amd64 }
           - { os: windows-11-arm,    builds: cp310-win_arm64 cp311-win_arm64 cp312-win_arm64 cp313-win_arm64 cp314-win_arm64 cp314t-win_arm64 }
+          # 32-bit windows: x86 MSVC archive, plain link (no PGO - the
+          # arm64 precedent: the edition risk is not worth a niche leg)
+          - { os: windows-latest,    builds: cp312-win32, msvc_arch: x86 }
     steps:
       - uses: actions/checkout@v7
 
@@ -152,11 +160,13 @@ jobs:
       - name: Build the C static library (PGO where it pays)
         if: runner.os != 'Linux'
         shell: bash
+        env:
+          TEPTRIS_MSVC_ARCH: ${{ matrix.msvc_arch || '' }}
         run: bash scripts/ci-lib-build.sh
 
       - name: Ensure binfmt handlers for the emulated arches
         if: matrix.archs
-        run: docker run --privileged --rm tonistiigi/binfmt --install arm,ppc64le,s390x
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm,ppc64le,s390x,riscv64
 
       - name: cibuildwheel (cp310-cp314t)
         uses: pypa/cibuildwheel@v4.3.1
@@ -181,7 +191,7 @@ jobs:
           # missing pgd FATAL (LNK1266, run 37159686630) - ARM64
           # links plain (ci-lib-build.sh stages bplain as bstatic
           # there).
-          CIBW_ENVIRONMENT_WINDOWS: ${{ runner.arch != 'ARM64' && 'TEPTRIS_INCLUDE=libteptris-src/src/include TEPTRIS_LIBDIR=libteptris-src/bstatic/src TEPTRIS_MSVC_PGO=1 TEPTRIS_PGD=libteptris-src/bpgd/train.pgd' || 'TEPTRIS_INCLUDE=libteptris-src/src/include TEPTRIS_LIBDIR=libteptris-src/bstatic/src' }}
+          CIBW_ENVIRONMENT_WINDOWS: ${{ (runner.arch != 'ARM64' && !contains(matrix.builds, 'win32')) && 'TEPTRIS_INCLUDE=libteptris-src/src/include TEPTRIS_LIBDIR=libteptris-src/bstatic/src TEPTRIS_MSVC_PGO=1 TEPTRIS_PGD=libteptris-src/bpgd/train.pgd' || 'TEPTRIS_INCLUDE=libteptris-src/src/include TEPTRIS_LIBDIR=libteptris-src/bstatic/src' }}
           CIBW_BEFORE_BUILD: >-
             rm -rf src/teptris/_engine &&
             cp -r libteptris-src/src src/teptris/_engine &&
