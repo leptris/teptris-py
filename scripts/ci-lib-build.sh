@@ -79,7 +79,7 @@ rem bstatic: /GL archive for the PGO-consuming version-specific link.
 rem ARM64 MSVC has NO PGO (LNK4256: not available in this edition), and
 rem the x86 (win32 wheel) cell rides plain by policy - both fall back
 rem to the plain archive at the same path and skip training.
-if "$VSARCH" != "amd64" (
+if NOT "$VSARCH" == "amd64" (
   xcopy /e /i /y $SRC\bplain $SRC\bstatic || exit /b 1
   cd /d %CD% && exit /b 0
 )
