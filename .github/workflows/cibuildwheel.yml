@@ -178,6 +178,9 @@ jobs:
           # image'); a dated tag survives the GC window. Drop this
           # when the cibuildwheel train carries a live digest again.
           CIBW_MANYLINUX_I686_IMAGE: ${{ matrix.i686_image || '' }}
+          # cibuildwheel resolves the pypy_i686 image at startup too -
+          # the same dead digest kills the cell before the build
+          CIBW_PYPY_MANYLINUX_I686_IMAGE: ${{ matrix.i686_image || '' }}
           # cibuildwheel v4 REMOVED the cpython-freethreading enable
           # group: 3.14t builds by default (the cp314t selectors need
           # no opt-in anymore). cpython-prerelease stays for future
