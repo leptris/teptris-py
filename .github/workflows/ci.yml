@@ -235,7 +235,12 @@ jobs:
           python-version: '3.12'
       - name: Build the engine + install the binding
         run: |
-          cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release             -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON             -DTEPTRIS_BUILD_CLI=OFF -DBUILD_TESTING=OFF
+          # POSITION_INDEPENDENT_CODE: the LTO archive's objects must
+          # carry PIC relocations for the extension link - without it
+          # one optimizer re-partitioning flips a table reference to
+          # R_X86_64_PC32 and the shared-object link dies ("bad
+          # value"; every other consumer sets this flag)
+          cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release             -DTEPTRIS_BUILD_SHARED=OFF -DTEPTRIS_BUILD_STATIC=ON             -DTEPTRIS_BUILD_CLI=OFF -DBUILD_TESTING=OFF             -DCMAKE_POSITION_INDEPENDENT_CODE=ON
           cmake --build engine/build -j
           python -m pip install --upgrade pip setuptools
           TEPTRIS_INCLUDE=$PWD/engine/src/include           TEPTRIS_LIBDIR=$PWD/engine/build/src           pip install . --no-build-isolation
