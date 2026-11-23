@@ -128,8 +128,16 @@ jobs:
           # riscv64: qemu binfmt (the slowest leg - one minor only);
           # i686 runs 32-bit containers on the x86_64 kernel, no binfmt
           - { os: ubuntu-latest,     builds: cp312-manylinux_riscv64, archs: riscv64 }
-          - { os: ubuntu-latest,     builds: cp312-manylinux_i686, archs: i686, i686_image: "quay.io/pypa/manylinux_2_28_i686:2026.11.21-1" }
-          - { os: ubuntu-latest,     builds: cp312-musllinux_i686, archs: i686 }
+          # i686 cells SUSPENDED (issue tracking): the runner-host
+          # cannot resolve/pull the manylinux_2_28_i686 images from
+          # quay - deterministic across 4 rounds (baked digest, dated
+          # tag, both cpython and pypy lookups) while sibling quay
+          # pulls (riscv64/ppc64le) pass in the same runs. The sdist
+          # covers i686 by compiling at install; the 0.3.31.0 i686
+          # wheels remain on PyPI. Resume when the runner/registry
+          # relationship heals.
+          # - { os: ubuntu-latest,     builds: cp312-manylinux_i686, archs: i686, i686_image: "quay.io/pypa/manylinux_2_28_i686:2026.11.21-1" }
+          # - { os: ubuntu-latest,     builds: cp312-musllinux_i686, archs: i686 }
           - { os: ubuntu-24.04-arm,  builds: cp310-manylinux_aarch64 cp311-manylinux_aarch64 cp312-manylinux_aarch64 cp313-manylinux_aarch64 cp314-manylinux_aarch64 cp314t-manylinux_aarch64 }
           - { os: ubuntu-24.04-arm,  builds: cp310-musllinux_aarch64 cp311-musllinux_aarch64 cp312-musllinux_aarch64 cp313-musllinux_aarch64 cp314-musllinux_aarch64 cp314t-musllinux_aarch64 }
           - { os: macos-latest,      builds: cp310-macosx_arm64 cp311-macosx_arm64 cp312-macosx_arm64 cp313-macosx_arm64 cp314-macosx_arm64 cp314t-macosx_arm64 }
@@ -177,10 +185,7 @@ jobs:
           # i686 images and the old digest 404s at pull - 'No such
           # image'); a dated tag survives the GC window. Drop this
           # when the cibuildwheel train carries a live digest again.
-          CIBW_MANYLINUX_I686_IMAGE: ${{ matrix.i686_image || '' }}
-          # cibuildwheel resolves the pypy_i686 image at startup too -
-          # the same dead digest kills the cell before the build
-          CIBW_PYPY_MANYLINUX_I686_IMAGE: ${{ matrix.i686_image || '' }}
+          # i686 image overrides: suspended with the cells above
           # cibuildwheel v4 REMOVED the cpython-freethreading enable
           # group: 3.14t builds by default (the cp314t selectors need
           # no opt-in anymore). cpython-prerelease stays for future
