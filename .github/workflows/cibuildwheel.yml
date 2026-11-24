@@ -99,6 +99,42 @@ jobs:
           print(f"doctrine OK {sdists[0]}: {len(sources)} sources")
           PY
 
+  # The publish SET (teptris-py#172): wheels + sdist are ONE delivery
+  # unit. The wave channel is manual twine from this run's artifacts,
+  # and the 0.3.30/31/33 waves shipped wheels-only because the upload
+  # grabbed the wheels-* artifacts and skipped the sdist one — the
+  # doctrine gate above proved the artifacts fine, the split happened
+  # at upload time. Everything downstream of this job is a single
+  # artifact: download publish-set, upload EVERY file in it — the
+  # wheels-only shape cannot recur.
+  publish-set:
+    needs: [verify-doctrine]
+    if: always() && !cancelled() && !failure()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: wheels-*
+          path: publish-set
+          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdist
+          path: publish-set
+      - name: Assert the set carries BOTH halves
+        run: |
+          set -eux
+          wheels=$(ls publish-set/*.whl | wc -l)
+          sdists=$(ls publish-set/*.tar.gz | wc -l)
+          echo "publish set: ${wheels} wheels + ${sdists} sdist"
+          [ "${wheels}" -ge 1 ] || { echo "::error::publish set carries no wheels"; exit 1; }
+          [ "${sdists}" -eq 1 ] || { echo "::error::publish set must carry exactly one sdist, got ${sdists}"; exit 1; }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: publish-set
+          path: publish-set/*
+          if-no-files-found: error
+
   wheels:
     name: ${{ matrix.builds }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
