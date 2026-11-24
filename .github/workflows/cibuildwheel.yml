@@ -128,16 +128,10 @@ jobs:
           # riscv64: qemu binfmt (the slowest leg - one minor only);
           # i686 runs 32-bit containers on the x86_64 kernel, no binfmt
           - { os: ubuntu-latest,     builds: cp312-manylinux_riscv64, archs: riscv64 }
-          # i686 cells SUSPENDED (issue tracking): the runner-host
-          # cannot resolve/pull the manylinux_2_28_i686 images from
-          # quay - deterministic across 4 rounds (baked digest, dated
-          # tag, both cpython and pypy lookups) while sibling quay
-          # pulls (riscv64/ppc64le) pass in the same runs. The sdist
-          # covers i686 by compiling at install; the 0.3.31.0 i686
-          # wheels remain on PyPI. Resume when the runner/registry
-          # relationship heals.
-          # - { os: ubuntu-latest,     builds: cp312-manylinux_i686, archs: i686, i686_image: "quay.io/pypa/manylinux_2_28_i686:2026.11.21-1" }
-          # - { os: ubuntu-latest,     builds: cp312-musllinux_i686, archs: i686 }
+          # i686 resume attempt (issue #168): :latest instead of the
+          # dated tag and the GC'd digest
+          - { os: ubuntu-latest,     builds: cp312-manylinux_i686, archs: i686, i686_image: "quay.io/pypa/manylinux_2_28_i686:latest" }
+          - { os: ubuntu-latest,     builds: cp312-musllinux_i686, archs: i686 }
           - { os: ubuntu-24.04-arm,  builds: cp310-manylinux_aarch64 cp311-manylinux_aarch64 cp312-manylinux_aarch64 cp313-manylinux_aarch64 cp314-manylinux_aarch64 cp314t-manylinux_aarch64 }
           - { os: ubuntu-24.04-arm,  builds: cp310-musllinux_aarch64 cp311-musllinux_aarch64 cp312-musllinux_aarch64 cp313-musllinux_aarch64 cp314-musllinux_aarch64 cp314t-musllinux_aarch64 }
           - { os: macos-latest,      builds: cp310-macosx_arm64 cp311-macosx_arm64 cp312-macosx_arm64 cp313-macosx_arm64 cp314-macosx_arm64 cp314t-macosx_arm64 }
