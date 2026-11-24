@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.33.1 (2026-11-24)
+
+- **The plan face over the rs/ts spec shape** (#173): `plan_build(rows) -> Plan`
+  and `plan_walk(plan, toml) -> dict` (`teptris.plan`), the flat
+  `PlanRowSpec`-style dialect that teptris-rs (`src/plan.rs`) and
+  teptris-ts (`planBuild(PlanRowSpec[])`) expose — alongside the
+  existing tree-shaped `Descriptor` (the ruby twin). One engine walk
+  materializes only the planned keys; absent rows read as None.
+- **Publish integrity** (#172): the wheels-only 0.3.30/0.3.31/0.3.33
+  releases get their missing sdists backfilled from the original
+  cibuildwave artifacts, and the lane assembles a single
+  **publish-set** artifact (wheels + sdist, counts asserted) so an
+  upload can no longer split the set, with a registry smoke behind it.
+- Engine pin unchanged (v0.3.33 — no engine change; family law:
+  version = {engine 0.3.33}.{iteration 1}).
+- Lanes: lang-tier builds the plain archive (LTO off, PIC on) (#170);
+  binding-bench's prev pick walks PyPI for the newest sdist-carrying
+  release (#171).
+
 ## 0.3.8.1 (2026-10-23)
 
 - **Engine v0.3.8**: duplicate-key errors name the enclosing table
