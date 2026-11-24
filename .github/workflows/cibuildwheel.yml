@@ -122,10 +122,13 @@ jobs:
           name: sdist
           path: publish-set
       - name: Assert the set carries BOTH halves
+        shell: bash
         run: |
           set -eux
-          wheels=$(ls publish-set/*.whl | wc -l)
-          sdists=$(ls publish-set/*.tar.gz | wc -l)
+          # find, not ls: the publish gate must not depend on filename
+          # shapes (shellcheck SC2012)
+          wheels=$(find publish-set -maxdepth 1 -name '*.whl' | wc -l)
+          sdists=$(find publish-set -maxdepth 1 -name '*.tar.gz' | wc -l)
           echo "publish set: ${wheels} wheels + ${sdists} sdist"
           [ "${wheels}" -ge 1 ] || { echo "::error::publish set carries no wheels"; exit 1; }
           [ "${sdists}" -eq 1 ] || { echo "::error::publish set must carry exactly one sdist, got ${sdists}"; exit 1; }
