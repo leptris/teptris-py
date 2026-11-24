@@ -167,14 +167,33 @@ jobs:
           # riscv64: qemu binfmt (the slowest leg - one minor only);
           # i686 runs 32-bit containers on the x86_64 kernel, no binfmt
           - { os: ubuntu-latest,     builds: cp312-manylinux_riscv64, archs: riscv64 }
-          # i686 cells SUSPENDED (issue tracking): the runner-host
-          # cannot resolve/pull the manylinux_2_28_i686 images from
-          # quay - deterministic across 4 rounds (baked digest, dated
-          # tag, both cpython and pypy lookups) while sibling quay
-          # pulls (riscv64/ppc64le) pass in the same runs. The sdist
-          # covers i686 by compiling at install; the 0.3.31.0 i686
-          # wheels remain on PyPI. Resume when the runner/registry
-          # relationship heals.
+          # i686 cells SUSPENDED (teptris-py#168): the runner host
+          # cannot pull the manylinux_2_28_i686 images from quay.
+          # Evidence: 5 rounds, 4 reference strategies, all failing
+          # while sibling quay pulls (musllinux_1_2_i686, riscv64,
+          # ppc64le, s390x) pass in the SAME runs —
+          #   1. cibuildwheel v4.3.1's baked digest 72e885... (GC'd:
+          #      quay's manifest API 404s it, verified 2026-11-24)
+          #   2. the dated tag 2026.11.21-1, verified live via the
+          #      quay API immediately before the pull - still "No
+          #      such image" from the runner
+          #   3. :latest (PR #169), same failure, both cpython and
+          #      pypy lookups overridden
+          #   4. pip INSIDE the i686 container could not resolve
+          #      pypi.org while it ran (Name or service not known)
+          # The registry itself is healthy: the dated tags and the
+          # digests newer cibuildwheel trains pin (v4.3.5: 2026.10.26-1,
+          # main: 2026.11.14-1) all serve HTTP 200 from the manifest
+          # API - the failure is the runner-host's pull path for THIS
+          # quay repository, not the images and not our config.
+          # The sdist covers i686 by compiling at install; the
+          # 0.3.31.0 i686 wheels remain on PyPI.
+          # RESUME (re-enable note): when the pulls heal, bump the
+          # cibuildwheel train first (v4.3.1 -> current; its baked
+          # i686 pin carries a live digest - verify the whole matrix,
+          # the v3->v4 bump pattern), uncomment the two cells below,
+          # and let one full run prove every cell. The glibc floor
+          # gate and the in-container smokes need no other changes.
           # - { os: ubuntu-latest,     builds: cp312-manylinux_i686, archs: i686, i686_image: "quay.io/pypa/manylinux_2_28_i686:2026.11.21-1" }
           # - { os: ubuntu-latest,     builds: cp312-musllinux_i686, archs: i686 }
           - { os: ubuntu-24.04-arm,  builds: cp310-manylinux_aarch64 cp311-manylinux_aarch64 cp312-manylinux_aarch64 cp313-manylinux_aarch64 cp314-manylinux_aarch64 cp314t-manylinux_aarch64 }
@@ -219,12 +238,13 @@ jobs:
         uses: pypa/cibuildwheel@v4.3.1
         env:
           CIBW_BUILD: ${{ matrix.builds }}
-          # the i686 cell pins a DATED image tag: cibuildwheel's baked
-          # digest was garbage-collected upstream (quay re-pushed the
-          # i686 images and the old digest 404s at pull - 'No such
-          # image'); a dated tag survives the GC window. Drop this
-          # when the cibuildwheel train carries a live digest again.
-          # i686 image overrides: suspended with the cells above
+          # i686 image reference history (teptris-py#168, cells
+          # suspended above): the v4.3.1 baked digest is GC'd upstream
+          # (quay's manifest API 404s it), and BOTH the dated tag and
+          # :latest still fail at runner-side pull even though the
+          # registry API serves them - reference pins do not fix this
+          # cell from the runner; see the suspension note in the
+          # matrix and its RESUME recipe (train bump first).
           # cibuildwheel v4 REMOVED the cpython-freethreading enable
           # group: 3.14t builds by default (the cp314t selectors need
           # no opt-in anymore). cpython-prerelease stays for future

@@ -86,8 +86,11 @@ own object construction; both libraries materialize fully.
 the version-specific wheels — cp310 through cp314 (+ free-threaded
 cp314t) across manylinux/musllinux x86_64 and aarch64, macOS arm64
 and x86_64, Windows AMD64 and ARM64, plus a cp312 wheel for the
-emulated arches (armv7l, ppc64le, s390x, riscv64, i686 glibc + musl)
-and 32-bit Windows (cp312-win32). Every wheel builds against
+emulated arches (armv7l, ppc64le, s390x, riscv64) and 32-bit Windows
+(cp312-win32). The i686 wheel cells are suspended while the runner
+cannot pull their manylinux images (teptris-py#168): i686 currently
+installs the sdist, which compiles at install. Every wheel builds
+against
 the full C API — no limited-API line — so borrowed UTF-8 reads and
 the datetime.h fast paths ship everywhere. The extension statically
 links `libteptris`, so each wheel is a single self-contained module
