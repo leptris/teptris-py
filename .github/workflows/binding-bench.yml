@@ -66,13 +66,26 @@ jobs:
             TEPTRIS_LIBDIR="$PWD/libteptris-src/build/src" \
             /tmp/head/bin/pip install -q --no-build-isolation .
 
-      - name: Install the latest release's sdist into venv B
+      - name: Install the newest sdist-carrying release into venv B
         run: |
           python3 -m venv /tmp/prev
           # the sdist build needs setuptools in the venv (--no-build-isolation)
           /tmp/prev/bin/pip install -q "setuptools>=61" wheel
-          V=$(curl -s https://pypi.org/pypi/teptris/json | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])")
-          echo "prev sdist: $V"
+          # The newest release may be wheels-only on PyPI (0.3.30+ shipped
+          # without sdists); bench prev must be an sdist-carrying release,
+          # chosen loudly, never silently mismatched.
+          V=$(curl -s https://pypi.org/pypi/teptris/json | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+key=lambda v: tuple(int(x) for x in v.split('.') if x.isdigit())
+sdisted=[v for v,fs in d['releases'].items() if fs and any(f['packagetype']=='sdist' and not f['yanked'] for f in fs)]
+print(max(sdisted, key=key))
+")
+          LATEST=$(curl -s https://pypi.org/pypi/teptris/json | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])")
+          echo "prev sdist: $V (PyPI newest: $LATEST)"
+          if [ "$V" != "$LATEST" ]; then
+            echo "::warning::PyPI newest $LATEST has no sdist - benching against the newest sdist-carrying release $V"
+          fi
           /tmp/prev/bin/pip download -q "teptris==$V" --no-binary :all: --no-deps -d /tmp/prevsrc
           /tmp/prev/bin/pip install -q --no-build-isolation /tmp/prevsrc/teptris-*.tar.gz
 
