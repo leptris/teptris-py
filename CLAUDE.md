@@ -15,8 +15,12 @@ ledger/plan, live in the engine's
   workflows (ci, cibuildwheel, lang-tier, binding-bench, +1) — **a
   version bump moves every pin in the same PR**.
 - Releases: tag `v{version}` → the cibuildwheel train (60 wheels +
-  sdist) → manual twine upload (the delivery doctrine) → published
-  PyPI smoke. From the 0.3.7.2 train on, the upload attaches PEP 740
+  sdist) → manual twine upload (the delivery doctrine, runbook:
+  [docs/PUBLISHING.md](docs/PUBLISHING.md)) → published PyPI smoke.
+  The upload unit is the run's `publish-set` artifact — wheels + sdist
+  TOGETHER (the 0.3.30/31/33 waves shipped wheels-only, #172); the
+  registry smoke (`scripts/publish_smoke.py {version}`) must pass
+  post-publish. From the 0.3.7.2 train on, the upload attaches PEP 740
   attestations (`twine upload --attestations`, twine ≥ 6.1) — PyPI
   releases to date carry none (X3 survey, 2026-10-20).
 - Every release is gated by a published-wheel smoke: install from
