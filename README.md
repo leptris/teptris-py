@@ -177,6 +177,37 @@ Rows absent from the document read as `None`; keys not in the plan never
 appear. `walk` raises `TOMLDecodeError` with `line`/`column` like every
 other public path.
 
+## Plan (`plan_build` / `plan_walk`)
+
+`teptris.plan_build` compiles a plan from a row spec and
+`teptris.plan_walk` walks documents against it — the twin of
+teptris-rs `src/plan.rs` and teptris-ts `planBuild`/`planWalk`
+(teptris-py#173), the surface the serialbench matrix prices. Same
+engine face as Descriptor (`teptris_plan_build`/`teptris_plan_walk`),
+rs/ts dialect and semantics:
+
+```python
+plan = teptris.plan_build([
+    "name",                                       # str shorthand = scalar
+    {"name": "port", "kind": "scalar"},
+    {"name": "hosts", "kind": "collection"},      # array of scalars
+    {"name": "items", "rows": ["id", "label"]},   # nested: spans arrays
+                                                  # of tables too
+    {"name": "extra", "kind": "raw"},             # untouched subtree
+])
+doc = teptris.plan_walk(plan, toml_string)        # str or bytes
+# {"name": "svc", "port": 8080, "hosts": [...],
+#  "items": [{"id": 1}, ...], "extra": {...}}
+```
+
+Results come back typed — real ints/floats/bools/datetimes per the
+`loads()` contract — and rows absent from the document (or mismatched
+against their planned kind) are **absent** from the output, the rs/ts
+"no nulls" semantics. One plan walks any number of documents; the
+engine handle is an opaque `Plan` freed with the object. Malformed
+specs raise `TypeError`/`ValueError` at build; parse failures raise
+`TOMLDecodeError` with `line`/`column`.
+
 ## Typing
 
 The package ships `py.typed` (PEP 561) with a `_native.pyi` stub for the
