@@ -238,6 +238,7 @@ def load(fp: str | bytes | BinaryIO) -> dict[str, Any]:
 
 
 from .descriptor import Descriptor
+from .plan import Plan, plan_build, plan_walk
 
 
 def engine_version() -> str:
@@ -247,6 +248,7 @@ def engine_version() -> str:
     return _engine_version()
 
 
-__all__ = ["Descriptor", "LazyNode", "TOMLDecodeError", "dumps",
+__all__ = ["Descriptor", "LazyNode", "Plan", "TOMLDecodeError", "dumps",
            "dumps_json_natural", "engine_version", "load", "loads",
-           "loads_batch", "loads_lazy", "loads_lazy_batch"]
+           "loads_batch", "loads_lazy", "loads_lazy_batch",
+           "plan_build", "plan_walk"]
